@@ -1,0 +1,17 @@
+# Enhanced Lighthouse API Requirements
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.0.3
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# LLM Integration
+litellm==1.16.0
+
+# Additional dependencies for enhanced features
+websockets==11.0.2
+asyncio==3.4.3
+
+# Optional: For better performance
+numpy>=1.24.0
