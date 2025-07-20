@@ -43,6 +43,13 @@ const LLMConfigManager = () => {
   const [keyManagerProvider, setKeyManagerProvider] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isTestingKey, setIsTestingKey] = useState(false);
+  const [ollamaModels, setOllamaModels] = useState([]);
+  const [ollamaStatus, setOllamaStatus] = useState(null);
+  const [showOllamaManager, setShowOllamaManager] = useState(false);
+  const [newModelName, setNewModelName] = useState("");
+  const [isPullingModel, setIsPullingModel] = useState(false);
+  const [isRefreshingModels, setIsRefreshingModels] = useState(false);
+  const [lastRefreshTime, setLastRefreshTime] = useState(null);
 
   const agentTasks = [
     {
@@ -222,6 +229,7 @@ const LLMConfigManager = () => {
   useEffect(() => {
     loadConfigurations();
     loadSystemStatus();
+    loadOllamaData();
   }, []);
 
   const loadConfigurations = async () => {
@@ -267,14 +275,24 @@ const LLMConfigManager = () => {
       });
       
       if (response.ok) {
-        alert("LLM configurations saved successfully!");
+        const result = await response.json();
+        
+        // Show success message with details
+        const taskCount = Object.keys(configs).length;
+        const modelInfo = Object.entries(configs).map(([task, config]) => 
+          `${task}: ${config.provider}/${config.model}`
+        ).join('\n');
+        
+        alert(`✅ Successfully saved configurations for ${taskCount} tasks:\n\n${modelInfo}\n\nConfigurations will persist between sessions.`);
         await loadSystemStatus(); // Refresh status
+        await loadConfigurations(); // Reload to confirm persistence
       } else {
-        alert("Failed to save configurations");
+        const errorData = await response.json();
+        alert(`❌ Failed to save configurations: ${errorData.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error("Failed to save configurations:", error);
-      alert("Error saving configurations");
+      alert(`❌ Error saving configurations: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -383,6 +401,108 @@ const LLMConfigManager = () => {
     }
   };
 
+  const loadOllamaData = async () => {
+    try {
+      // Load Ollama status
+      const statusResponse = await fetch("/api/ollama/status");
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json();
+        setOllamaStatus(statusData);
+        
+        // If running, load models
+        if (statusData.running) {
+          const modelsResponse = await fetch("/api/ollama/models");
+          if (modelsResponse.ok) {
+            const modelsData = await modelsResponse.json();
+            setOllamaModels(modelsData.models || []);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load Ollama data:", error);
+      setOllamaStatus({ running: false, error: error.message });
+    }
+  };
+
+  const pullOllamaModel = async () => {
+    if (!newModelName.trim()) return;
+    
+    setIsPullingModel(true);
+    try {
+      const response = await fetch("/api/ollama/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: newModelName.trim() })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        alert(`✅ Successfully pulled model: ${newModelName}`);
+        setNewModelName("");
+        await loadOllamaData(); // Refresh models list
+        await loadSystemStatus(); // Refresh provider status
+      } else {
+        const error = await response.json();
+        alert(`❌ Failed to pull model: ${error.detail}`);
+      }
+    } catch (error) {
+      alert(`❌ Error pulling model: ${error.message}`);
+    } finally {
+      setIsPullingModel(false);
+    }
+  };
+
+  const deleteOllamaModel = async (modelName) => {
+    if (!confirm(`Delete model "${modelName}"? This cannot be undone.`)) return;
+    
+    try {
+      const response = await fetch(`/api/ollama/models/${encodeURIComponent(modelName)}`, {
+        method: "DELETE"
+      });
+      
+      if (response.ok) {
+        alert(`✅ Successfully deleted model: ${modelName}`);
+        await loadOllamaData(); // Refresh models list
+      } else {
+        const error = await response.json();
+        alert(`❌ Failed to delete model: ${error.detail}`);
+      }
+    } catch (error) {
+      alert(`❌ Error deleting model: ${error.message}`);
+    }
+  };
+
+  const refreshModelLists = async () => {
+    setIsRefreshingModels(true);
+    try {
+      const response = await fetch("/api/llm/refresh-models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setLastRefreshTime(new Date().toLocaleString());
+        
+        // Update available models
+        setAvailableModels(data.available_models || {});
+        
+        // Refresh system status and Ollama data
+        await loadSystemStatus();
+        await loadOllamaData();
+        
+        alert(`✅ Model lists refreshed! Updated ${Object.keys(data.available_models || {}).length} providers`);
+      } else {
+        const error = await response.json();
+        alert(`❌ Failed to refresh models: ${error.detail}`);
+      }
+    } catch (error) {
+      alert(`❌ Error refreshing models: ${error.message}`);
+    } finally {
+      setIsRefreshingModels(false);
+    }
+  };
+
   const currentConfig = configs[selectedTask] || {};
   const selectedTaskInfo = agentTasks.find(t => t.id === selectedTask);
 
@@ -412,6 +532,24 @@ const LLMConfigManager = () => {
               <Activity className="w-4 h-4" />
               {Object.keys(configs).length} Configured Tasks
             </div>
+            <button
+              onClick={refreshModelLists}
+              disabled={isRefreshingModels}
+              className="inline-flex items-center gap-2 px-3 py-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white text-sm rounded-lg font-medium transition-colors"
+              title="Refresh model lists from live APIs"
+            >
+              {isRefreshingModels ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Refreshing...
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="w-4 h-4" />
+                  Refresh Models
+                </>
+              )}
+            </button>
             <button
               onClick={resetToDefaults}
               className="inline-flex items-center gap-2 px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-lg font-medium transition-colors"
@@ -499,8 +637,17 @@ const LLMConfigManager = () => {
             
             {/* Provider info */}
             {provider === "ollama" && (
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                Local provider - no API key needed
+              <div className="mt-3">
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Local provider - no API key needed
+                </div>
+                <button
+                  onClick={() => setShowOllamaManager(true)}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-100 hover:bg-purple-200 dark:bg-purple-900/30 dark:hover:bg-purple-800/40 text-purple-700 dark:text-purple-300 rounded transition-colors"
+                  title="Manage Ollama models"
+                >
+                  🔧 Manage Models
+                </button>
               </div>
             )}
             {provider === "mock" && (
@@ -886,6 +1033,133 @@ const LLMConfigManager = () => {
               <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
                 🛡️ Your API key will be encrypted and stored in macOS Keychain
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ollama Model Manager Modal */}
+      {showOllamaManager && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 max-w-2xl w-full mx-4 border border-gray-200 dark:border-gray-700 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                  🔧
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Ollama Model Manager
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {ollamaStatus?.running ? `${ollamaModels.length} models installed` : "Ollama server not running"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowOllamaManager(false)}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {ollamaStatus?.running ? (
+              <div className="space-y-6">
+                {/* Pull New Model */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                  <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-3">Pull New Model</h4>
+                  <div className="flex gap-3">
+                    <input
+                      type="text"
+                      value={newModelName}
+                      onChange={(e) => setNewModelName(e.target.value)}
+                      placeholder="e.g. llama3.2:latest, mistral:7b, codellama:13b"
+                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                    />
+                    <button
+                      onClick={pullOllamaModel}
+                      disabled={!newModelName.trim() || isPullingModel}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      {isPullingModel ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Pulling...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4" />
+                          Pull
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                    Popular models: llama3.2:latest, mistral:7b, codellama:13b, gemma2:9b
+                  </p>
+                </div>
+
+                {/* Installed Models */}
+                <div>
+                  <h4 className="font-medium text-gray-900 dark:text-white mb-3">Installed Models</h4>
+                  {ollamaModels.length > 0 ? (
+                    <div className="space-y-2">
+                      {ollamaModels.map((model) => (
+                        <div key={model.name} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {model.name}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {model.details?.family && `${model.details.family} • `}
+                              {(model.size / (1024**3)).toFixed(1)} GB
+                              {model.details?.parameter_size && ` • ${model.details.parameter_size}`}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => deleteOllamaModel(model.name)}
+                            className="ml-3 p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                            title="Delete model"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      No models installed. Pull a model to get started.
+                    </div>
+                  )}
+                </div>
+
+                {/* Server Info */}
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                  <h4 className="font-medium text-green-900 dark:text-green-100 mb-2">Server Status</h4>
+                  <div className="text-sm text-green-800 dark:text-green-200">
+                    ✅ Ollama v{ollamaStatus.version} running at {ollamaStatus.host}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <div className="text-gray-500 dark:text-gray-400 mb-4">
+                  Ollama server is not running or not accessible
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  Start Ollama with: <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">ollama serve</code>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowOllamaManager(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

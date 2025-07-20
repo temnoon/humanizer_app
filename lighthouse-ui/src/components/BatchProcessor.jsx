@@ -183,7 +183,7 @@ const BatchProcessor = () => {
             break;
           case 'analyze':
             endpoint = '/lamish/analyze';
-            body = { content: narrative.text };
+            body = { narrative: narrative.text };
             break;
           case 'maieutic':
             endpoint = '/maieutic/start';
@@ -197,7 +197,7 @@ const BatchProcessor = () => {
             body = {
               text: narrative.text,
               source_language: 'english',
-              intermediate_languages: ['spanish', 'french']
+              intermediate_language: 'spanish'
             };
             break;
           default:

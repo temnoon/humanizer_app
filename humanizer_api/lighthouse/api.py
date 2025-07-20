@@ -141,7 +141,7 @@ class TransformationResponse(BaseModel):
     original_text: str
     transformed_text: str
     debug_prompt: str
-    model_used: str
+    llm_model: str
 
 # --- API Endpoints ---
 
@@ -220,8 +220,8 @@ Produce only the final, transformed narrative text.
             temperature=0.7,
         )
         transformed_text = response.choices[0].message.content.strip()
-        model_used = response.model
-        print(f"LLM response received. Model used: {model_used}")
+        llm_model = response.model
+        print(f"LLM response received. Model used: {llm_model}")
 
     except Exception as e:
         print(f"ERROR: LLM call failed: {e}")
@@ -232,7 +232,7 @@ Produce only the final, transformed narrative text.
         "original_text": request.text,
         "transformed_text": transformed_text,
         "debug_prompt": prompt,
-        "model_used": model_used
+        "llm_model": llm_model
     }
 
 # To run this API locally:

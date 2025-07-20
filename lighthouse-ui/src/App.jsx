@@ -31,15 +31,17 @@ import TransformationControls from "./components/TransformationControls";
 import ProjectionView from "./components/ProjectionView";
 import LighthouseBeacon from "./components/LighthouseBeacon";
 import TransformationSteps from "./components/TransformationSteps";
+import SideBySideResults from "./components/SideBySideResults";
 import MaieuticDialogue from "./components/MaieuticDialogue";
 import TranslationAnalysis from "./components/TranslationAnalysis";
 import VisionAnalysis from "./components/VisionAnalysis";
-import UnifiedAttributeManager from "./components/UnifiedAttributeManager";
+import AttributeStudio from "./components/AttributeStudio";
 import LLMConfigManager from "./components/LLMConfigManager";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SimpleTransformApp from "./SimpleTransformApp";
-import APIConsole from "./components/APIConsole";
+import EnhancedAPIConsole from "./components/EnhancedAPIConsole";
 import BatchProcessor from "./components/BatchProcessor";
+import { AttributeProvider } from "./contexts/AttributeContext";
 
 function App() {
   const [isDark, setIsDark] = useState(true);
@@ -58,8 +60,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("simple");
   const [showSteps, setShowSteps] = useState(true);
   const [maieuticResult, setMaieuticResult] = useState(null);
-  const [availableModels, setAvailableModels] = useState(null);
-  const [selectedModel, setSelectedModel] = useState("llama3.2:latest");
+  const [savedTransformation, setSavedTransformation] = useState(null);
 
   // Load transformation options and models on mount
   useEffect(() => {
@@ -81,17 +82,6 @@ function App() {
       })
       .catch((err) => console.error("Failed to load configurations:", err));
 
-    // Load available models
-    fetch("/models")
-      .then((res) => res.json())
-      .then((data) => {
-        setAvailableModels(data);
-        // Set default model if available
-        if (data.text_models && data.text_models.length > 0) {
-          setSelectedModel(data.text_models[0].name);
-        }
-      })
-      .catch((err) => console.error("Failed to load models:", err));
   }, []);
 
   // Toggle theme
@@ -193,10 +183,19 @@ function App() {
     }
   };
 
+  const handleSaveTransformation = (editedText) => {
+    // Save the edited transformation
+    setSavedTransformation(editedText);
+    // Optionally, you could also update the projection state
+    if (projection) {
+      setProjection({ ...projection, narrative: editedText });
+    }
+  };
+
   const tabs = [
     { id: "simple", label: "Simple", icon: Sparkles },
     { id: "transform", label: "Transform", icon: Zap },
-    { id: "lamish", label: "Lamish", icon: Layers },
+    { id: "lamish", label: "Attribute Studio", icon: Layers },
     { id: "llm-config", label: "LLM Config", icon: Settings },
     { id: "batch", label: "Batch", icon: Package },
     { id: "api-console", label: "API Console", icon: Terminal },
@@ -206,7 +205,8 @@ function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+    <AttributeProvider>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       {/* Background effects */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
@@ -243,22 +243,6 @@ function App() {
                 </label>
               </div>
               
-              {availableModels && (
-                <div className="flex items-center space-x-2">
-                  <label className="text-sm text-muted-foreground">Model:</label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="text-sm bg-white/5 border border-white/10 rounded px-2 py-1 text-white"
-                  >
-                    {availableModels.text_models.map(model => (
-                      <option key={model.name} value={model.name} className="bg-slate-900">
-                        {model.name} ({model.size})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
               <button
                 onClick={() => setIsDark(!isDark)}
                 className="p-2 rounded-lg glass hover:bg-white/10 transition-colors"
@@ -437,52 +421,80 @@ function App() {
                       exit={{ opacity: 0 }}
                       className="space-y-8"
                     >
-                      {/* Deconstruction View */}
+                      {/* Side-by-Side Results */}
                       <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.2 }}
                       >
-                        <DeconstructionView deconstruction={deconstruction} />
+                        <SideBySideResults
+                          originalText={narrative}
+                          transformedText={projection.narrative}
+                          metadata={{
+                            target_persona: selectedPersona,
+                            target_namespace: selectedNamespace,
+                            target_style: selectedStyle,
+                            total_duration_ms: totalDuration,
+                            ...projection.metadata
+                          }}
+                          onCopy={copyProjection}
+                          copied={copied}
+                          onSave={handleSaveTransformation}
+                        />
                       </motion.div>
 
-                      {/* Projection View */}
+                      {/* Traditional Analysis Views (Collapsible) */}
                       <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.3 }}
+                        className="space-y-6"
                       >
-                        <ProjectionView
-                          projection={projection}
-                          onCopy={copyProjection}
-                          copied={copied}
-                        />
-                      </motion.div>
+                        {/* Analysis Toggle */}
+                        <details className="group">
+                          <summary className="glass rounded-xl p-4 cursor-pointer hover:bg-white/5 transition-colors">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <Zap className="w-5 h-5 text-purple-400" />
+                                <h3 className="text-lg font-semibold">Advanced Analysis & Diff</h3>
+                              </div>
+                              <ChevronRight className="w-5 h-5 text-purple-400 transition-transform group-open:rotate-90" />
+                            </div>
+                          </summary>
+                          
+                          <div className="mt-4 space-y-6">
+                            {/* Deconstruction View */}
+                            <DeconstructionView deconstruction={deconstruction} />
 
-                      {/* Diff View */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.4 }}
-                        className="glass rounded-2xl p-8"
-                      >
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center space-x-2">
-                            <Zap className="w-5 h-5 text-purple-400" />
-                            <h2 className="text-xl font-semibold">
-                              Transformation Analysis
-                            </h2>
+                            {/* Traditional Projection View */}
+                            <ProjectionView
+                              projection={projection}
+                              onCopy={copyProjection}
+                              copied={copied}
+                            />
+
+                            {/* Diff View */}
+                            <div className="glass rounded-2xl p-8">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-2">
+                                  <Zap className="w-5 h-5 text-purple-400" />
+                                  <h2 className="text-xl font-semibold">
+                                    Transformation Analysis
+                                  </h2>
+                                </div>
+                              </div>
+                              <div className="bg-black/20 rounded-lg overflow-hidden">
+                                <ReactDiffViewer
+                                  oldValue={narrative}
+                                  newValue={projection.narrative}
+                                  splitView={false}
+                                  useDarkTheme={isDark}
+                                  hideLineNumbers
+                                />
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div className="bg-black/20 rounded-lg overflow-hidden">
-                          <ReactDiffViewer
-                            oldValue={narrative}
-                            newValue={projection.narrative}
-                            splitView={false}
-                            useDarkTheme={isDark}
-                            hideLineNumbers
-                          />
-                        </div>
+                        </details>
                       </motion.div>
                     </motion.div>
                   )}
@@ -497,7 +509,7 @@ function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <UnifiedAttributeManager />
+                <AttributeStudio />
               </motion.div>
             )}
 
@@ -535,7 +547,7 @@ function App() {
                 exit={{ opacity: 0, x: -20 }}
               >
                 <ErrorBoundary>
-                  <APIConsole />
+                  <EnhancedAPIConsole />
                 </ErrorBoundary>
               </motion.div>
             )}
@@ -607,7 +619,8 @@ function App() {
           </div>
         </div>
       </footer>
-    </div>
+      </div>
+    </AttributeProvider>
   );
 }
 

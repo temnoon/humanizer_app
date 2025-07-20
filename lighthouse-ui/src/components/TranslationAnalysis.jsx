@@ -34,7 +34,7 @@ const TranslationAnalysis = ({ narrative, isActive }) => {
 
     setIsAnalyzing(true)
     try {
-      const response = await fetch('/api/translation/roundtrip', {
+      const response = await fetch('http://127.0.0.1:8100/translation/roundtrip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -44,10 +44,15 @@ const TranslationAnalysis = ({ narrative, isActive }) => {
         })
       })
 
+      if (!response.ok) {
+        throw new Error(`Translation failed: ${response.status}`)
+      }
+
       const data = await response.json()
       setAnalysisResult(data)
     } catch (error) {
       console.error('Translation analysis failed:', error)
+      alert(`Translation analysis failed: ${error.message}`)
     } finally {
       setIsAnalyzing(false)
     }
@@ -58,7 +63,7 @@ const TranslationAnalysis = ({ narrative, isActive }) => {
 
     setIsAnalyzing(true)
     try {
-      const response = await fetch('/api/translation/stability', {
+      const response = await fetch('http://127.0.0.1:8100/translation/stability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -217,13 +222,38 @@ const TranslationAnalysis = ({ narrative, isActive }) => {
           animate={{ opacity: 1, y: 0 }}
           className="glass rounded-2xl p-6"
         >
-          <div className="flex items-center space-x-3 mb-4">
-            <ArrowRightLeft className="w-5 h-5 text-purple-400" />
-            <h3 className="text-lg font-semibold">Round-trip Analysis Results</h3>
-            <div className="flex items-center space-x-2">
-              <Globe className="w-4 h-4 text-blue-400" />
-              <span className="text-sm text-blue-400 capitalize">{analysisResult.intermediate_language}</span>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <ArrowRightLeft className="w-5 h-5 text-purple-400" />
+              <h3 className="text-lg font-semibold">Round-trip Analysis Results</h3>
+              <div className="flex items-center space-x-2">
+                <Globe className="w-4 h-4 text-blue-400" />
+                <span className="text-sm text-blue-400 capitalize">{analysisResult.intermediate_language}</span>
+              </div>
             </div>
+            <button
+              onClick={performRoundTripAnalysis}
+              disabled={isAnalyzing || !narrative.trim()}
+              className={cn(
+                "px-3 py-2 rounded-lg text-sm font-medium transition-all",
+                "bg-purple-600 hover:bg-purple-700 text-white",
+                "disabled:opacity-50 disabled:cursor-not-allowed",
+                "flex items-center space-x-2"
+              )}
+              title="Reanalyze with current settings"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Reanalyzing...</span>
+                </>
+              ) : (
+                <>
+                  <ArrowRightLeft className="w-3 h-3" />
+                  <span>Another Round</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Semantic Drift Score */}
@@ -353,9 +383,34 @@ const TranslationAnalysis = ({ narrative, isActive }) => {
           animate={{ opacity: 1, y: 0 }}
           className="glass rounded-2xl p-6"
         >
-          <div className="flex items-center space-x-3 mb-4">
-            <BarChart3 className="w-5 h-5 text-blue-400" />
-            <h3 className="text-lg font-semibold">Semantic Stability Analysis</h3>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <BarChart3 className="w-5 h-5 text-blue-400" />
+              <h3 className="text-lg font-semibold">Semantic Stability Analysis</h3>
+            </div>
+            <button
+              onClick={performStabilityAnalysis}
+              disabled={isAnalyzing || !narrative.trim() || selectedLanguages.length === 0}
+              className={cn(
+                "px-3 py-2 rounded-lg text-sm font-medium transition-all",
+                "bg-blue-600 hover:bg-blue-700 text-white",
+                "disabled:opacity-50 disabled:cursor-not-allowed",
+                "flex items-center space-x-2"
+              )}
+              title="Reanalyze stability with current settings"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Reanalyzing...</span>
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="w-3 h-3" />
+                  <span>Another Analysis</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* Overall Stability Score */}

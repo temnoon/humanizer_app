@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Eye, 
@@ -10,7 +10,8 @@ import {
   Copy, 
   Check,
   Download,
-  Wand2
+  Wand2,
+  Settings
 } from 'lucide-react'
 import { cn } from '../utils'
 
@@ -23,10 +24,21 @@ const VisionAnalysis = ({ isActive }) => {
   const [copied, setCopied] = useState(false)
   const [customPrompt, setCustomPrompt] = useState('')
   const [imagePrompt, setImagePrompt] = useState('')
-  const [selectedProvider, setSelectedProvider] = useState('google')
-  const [selectedVisionModel, setSelectedVisionModel] = useState('gemini-2.5-pro')
+  const [selectedProvider, setSelectedProvider] = useState('openai')
+  const [selectedVisionModel, setSelectedVisionModel] = useState('gpt-4o')
+  const [isUsingConfig, setIsUsingConfig] = useState(true)
+  const [configSettings, setConfigSettings] = useState(null)
 
   const visionProviders = [
+    {
+      id: 'openai',
+      label: 'OpenAI',
+      models: [
+        { id: 'gpt-4o', label: 'GPT-4o', description: 'Latest vision-capable model' },
+        { id: 'gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Fast and capable' },
+        { id: 'gpt-4', label: 'GPT-4', description: 'Reliable vision model' }
+      ]
+    },
     {
       id: 'google',
       label: 'Google Gemini',
@@ -78,15 +90,53 @@ const VisionAnalysis = ({ isActive }) => {
     }
   ]
 
+  // Load LLM Config settings
+  useEffect(() => {
+    const loadConfigSettings = async () => {
+      try {
+        const response = await fetch('http://127.0.0.1:8100/api/llm/configurations')
+        const data = await response.json()
+        const visionConfig = data.task_configs?.vision
+        if (visionConfig) {
+          setConfigSettings(visionConfig)
+          if (isUsingConfig) {
+            setSelectedProvider(visionConfig.provider || 'openai')
+            setSelectedVisionModel(visionConfig.model || 'gpt-4o')
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load LLM Config:', error)
+      }
+    }
+    
+    if (isActive) {
+      loadConfigSettings()
+    }
+  }, [isActive, isUsingConfig])
+
   // Get current provider's models
   const currentProviderModels = visionProviders.find(p => p.id === selectedProvider)?.models || []
   
   // Update model when provider changes
   const handleProviderChange = (providerId) => {
     setSelectedProvider(providerId)
+    setIsUsingConfig(false) // Mark as override when user changes
     const provider = visionProviders.find(p => p.id === providerId)
     if (provider && provider.models.length > 0) {
       setSelectedVisionModel(provider.models[0].id)
+    }
+  }
+
+  const handleModelChange = (modelId) => {
+    setSelectedVisionModel(modelId)
+    setIsUsingConfig(false) // Mark as override when user changes
+  }
+
+  const resetToConfig = () => {
+    setIsUsingConfig(true)
+    if (configSettings) {
+      setSelectedProvider(configSettings.provider || 'openai')
+      setSelectedVisionModel(configSettings.model || 'gpt-4o')
     }
   }
 
@@ -127,14 +177,14 @@ const VisionAnalysis = ({ isActive }) => {
     try {
       if (selectedFunction === 'generate') {
         // Image generation
-        const response = await fetch('/api/image/generate', {
+        const response = await fetch('http://127.0.0.1:8100/api/image/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: imagePrompt,
-            provider: 'openai',
+            provider: isUsingConfig ? null : selectedProvider,
             size: '1024x1024',
-            model: 'dall-e-3'
+            model: isUsingConfig ? null : selectedVisionModel
           })
         })
 
@@ -150,9 +200,9 @@ const VisionAnalysis = ({ isActive }) => {
         // Vision analysis functions
         const base64Data = await convertToBase64(selectedFile)
         
-        const endpoint = selectedFunction === 'analyze' ? '/api/vision/analyze' :
-                        selectedFunction === 'transcribe' ? '/api/vision/transcribe' :
-                        '/api/vision/redraw'
+        const endpoint = selectedFunction === 'analyze' ? 'http://127.0.0.1:8100/api/vision/analyze' :
+                        selectedFunction === 'transcribe' ? 'http://127.0.0.1:8100/api/vision/transcribe' :
+                        'http://127.0.0.1:8100/api/vision/redraw'
 
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -160,8 +210,8 @@ const VisionAnalysis = ({ isActive }) => {
           body: JSON.stringify({
             prompt: customPrompt,
             image_data: base64Data,
-            provider: selectedProvider,
-            model: selectedVisionModel
+            provider: isUsingConfig ? null : selectedProvider,
+            model: isUsingConfig ? null : selectedVisionModel
           })
         })
 
@@ -209,6 +259,134 @@ const VisionAnalysis = ({ isActive }) => {
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
+      {/* Side-by-side modal for results */}
+      {result && (result.type === 'transcribe' || result.type === 'analyze' || result.type === 'redraw') && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex">
+          {/* Left side - Image */}
+          <div className="w-1/2 bg-gray-900 flex items-center justify-center p-6">
+            <div className="max-w-full max-h-full flex items-center justify-center">
+              <img 
+                src={previewUrl} 
+                alt="Source" 
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
+          </div>
+          
+          {/* Right side - Results & Controls */}
+          <div className="w-1/2 bg-gray-800 text-white flex flex-col">
+            {/* Header with controls */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-700">
+              <h3 className="text-xl font-semibold">
+                {result.type === 'transcribe' ? '📝 Handwriting Transcription' :
+                 result.type === 'analyze' ? '👁️ Image Analysis' : 
+                 '🎨 Artistic Analysis'}
+              </h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={processVision}
+                  disabled={isProcessing}
+                  className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                  title="Try another analysis"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>🔄 Another Round</>
+                  )}
+                </button>
+                <button
+                  onClick={copyResult}
+                  className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-medium transition-colors"
+                  title="Copy to clipboard"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+                <button
+                  onClick={() => setResult(null)}
+                  className="px-3 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+            
+            {/* Content area */}
+            <div className="flex-1 p-6 overflow-y-auto">
+              {/* Editable content */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    {result.type === 'transcribe' ? 'Transcribed Text (Editable)' : 'Analysis Result (Editable)'}
+                  </label>
+                  <textarea
+                    value={result.content || ''}
+                    onChange={(e) => setResult(prev => ({ ...prev, content: e.target.value }))}
+                    className="w-full h-64 px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white resize-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Analysis result will appear here..."
+                  />
+                </div>
+                
+                {/* Metadata */}
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-700">
+                  <div>
+                    <span className="text-sm text-gray-400">Provider:</span>
+                    <div className="font-medium">{result.provider || 'Unknown'}</div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-400">Model:</span>
+                    <div className="font-medium">{result.model || 'Unknown'}</div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-400">Processing Time:</span>
+                    <div className="font-medium">{result.processing_time}ms</div>
+                  </div>
+                  <div>
+                    <span className="text-sm text-gray-400">Type:</span>
+                    <div className="font-medium capitalize">{result.type}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Save section */}
+            <div className="p-6 border-t border-gray-700 bg-gray-750">
+              <button
+                onClick={() => {
+                  const timestamp = new Date().toISOString();
+                  const content = `# ${result.type === 'transcribe' ? 'Handwriting Transcription' : 'Vision Analysis'}
+
+## Result
+${result.content}
+
+## Metadata
+- Provider: ${result.provider}
+- Model: ${result.model} 
+- Processing Time: ${result.processing_time}ms
+- Timestamp: ${timestamp}
+- Type: ${result.type}
+`;
+                  const blob = new Blob([content], { type: 'text/markdown' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `vision-${result.type}-${timestamp.split('T')[0]}.md`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Save Analysis as Markdown
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Function Selection */}
       <div className="glass rounded-2xl p-6">
         <div className="flex items-center space-x-3 mb-4">
@@ -241,7 +419,7 @@ const VisionAnalysis = ({ isActive }) => {
             <label className="block text-sm font-medium mb-2">Model</label>
             <select
               value={selectedVisionModel}
-              onChange={(e) => setSelectedVisionModel(e.target.value)}
+              onChange={(e) => handleModelChange(e.target.value)}
               className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-purple-400"
             >
               {currentProviderModels.map(model => (
@@ -251,6 +429,46 @@ const VisionAnalysis = ({ isActive }) => {
               ))}
             </select>
           </div>
+        </div>
+
+        {/* LLM Config Integration Status */}
+        <div className={cn(
+          "flex items-center justify-between p-3 rounded-lg border mb-6",
+          isUsingConfig 
+            ? "border-green-500/20 bg-green-500/10" 
+            : "border-yellow-500/20 bg-yellow-500/10"
+        )}>
+          <div className="flex items-center space-x-2">
+            {isUsingConfig ? (
+              <>
+                <Check className="w-4 h-4 text-green-400" />
+                <span className="text-sm text-green-300">
+                  Using saved LLM Config settings
+                  {configSettings && (
+                    <span className="text-green-200/60 ml-1">
+                      ({configSettings.provider}/{configSettings.model})
+                    </span>
+                  )}
+                </span>
+              </>
+            ) : (
+              <>
+                <Settings className="w-4 h-4 text-yellow-400" />
+                <span className="text-sm text-yellow-300">
+                  Using tab-level overrides (not saved)
+                </span>
+              </>
+            )}
+          </div>
+          
+          {!isUsingConfig && (
+            <button
+              onClick={resetToConfig}
+              className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              Reset to Config
+            </button>
+          )}
         </div>
 
         {/* Function Tabs */}

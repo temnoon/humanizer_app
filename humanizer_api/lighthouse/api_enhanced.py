@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Optional
 import json
 import asyncio
 import uuid
+from datetime import datetime
 from keychain_manager import keychain_manager
 
 # Add the src directory to Python path for imports
@@ -43,6 +44,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import vision endpoints and advanced attributes
+from vision_endpoints import vision_router
+from advanced_attribute_api import advanced_attr_router
+from linguistic_api_endpoints import linguistic_router
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Humanizer Lighthouse API - Enhanced",
@@ -66,6 +72,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(vision_router)
+app.include_router(advanced_attr_router)
+app.include_router(linguistic_router)
 
 # Initialize LPE components
 projection_engine = ProjectionEngine()
@@ -189,7 +200,7 @@ class VisionAnalysisRequest(BaseModel):
 class VisionAnalysisResponse(BaseModel):
     analysis: str
     provider_used: str
-    model_used: str
+    llm_model: str
     processing_time_ms: int
 
 class HandwritingTranscriptionRequest(BaseModel):
@@ -201,7 +212,7 @@ class HandwritingTranscriptionRequest(BaseModel):
 class HandwritingTranscriptionResponse(BaseModel):
     transcription: str
     provider_used: str
-    model_used: str
+    llm_model: str
     processing_time_ms: int
 
 class ImageGenerationRequest(BaseModel):
@@ -583,7 +594,7 @@ async def analyze_image(request: VisionAnalysisRequest):
         return VisionAnalysisResponse(
             analysis=analysis,
             provider_used=request.provider,
-            model_used=request.model,
+            llm_model=request.model,
             processing_time_ms=processing_time
         )
         
@@ -626,7 +637,7 @@ async def transcribe_handwriting(request: HandwritingTranscriptionRequest):
         return HandwritingTranscriptionResponse(
             transcription=transcription,
             provider_used=request.provider,
-            model_used=request.model,
+            llm_model=request.model,
             processing_time_ms=processing_time
         )
         
@@ -675,7 +686,7 @@ async def analyze_for_redraw(request: VisionAnalysisRequest):
         return VisionAnalysisResponse(
             analysis=analysis,
             provider_used=request.provider,
-            model_used=request.model,
+            llm_model=request.model,
             processing_time_ms=processing_time
         )
         
@@ -1285,80 +1296,48 @@ async def get_llm_configurations():
             "groq", "together", "replicate", "cohere", "mistral", "mock"
         ]
         
-        # Get available models from models endpoint
-        try:
-            models_response = await get_models()
-            ollama_models = models_response.get("text_models", [])
-        except:
-            ollama_models = [{"name": "llama3.2:latest", "size": "7B"}]
-            
-        available_models = {
-            "ollama": ollama_models,
-            "openai": [
-                {"name": "gpt-4o", "size": "large", "context": "128k"},
-                {"name": "gpt-4o-mini", "size": "small", "context": "128k"},
-                {"name": "gpt-4-turbo", "size": "large", "context": "128k"},
-                {"name": "gpt-4", "size": "large", "context": "8k"},
-                {"name": "gpt-3.5-turbo", "size": "medium", "context": "16k"},
-                {"name": "gpt-3.5-turbo-instruct", "size": "medium", "context": "4k"}
-            ],
-            "anthropic": [
-                {"name": "claude-3-5-sonnet-20241022", "size": "large", "context": "200k"},
-                {"name": "claude-3-5-sonnet-20240620", "size": "large", "context": "200k"},
-                {"name": "claude-3-opus-20240229", "size": "large", "context": "200k"},
-                {"name": "claude-3-sonnet-20240229", "size": "medium", "context": "200k"},
-                {"name": "claude-3-haiku-20240307", "size": "small", "context": "200k"}
-            ],
-            "google": [
-                {"name": "gemini-1.5-pro", "size": "large", "context": "2M"},
-                {"name": "gemini-1.5-flash", "size": "medium", "context": "1M"},
-                {"name": "gemini-1.0-pro", "size": "medium", "context": "32k"},
-                {"name": "gemini-pro-vision", "size": "large", "context": "32k"}
-            ],
-            "huggingface": [
-                {"name": "meta-llama/Llama-2-70b-chat-hf", "size": "70B", "context": "4k"},
-                {"name": "meta-llama/Llama-2-13b-chat-hf", "size": "13B", "context": "4k"},
-                {"name": "meta-llama/Llama-2-7b-chat-hf", "size": "7B", "context": "4k"},
-                {"name": "mistralai/Mixtral-8x7B-Instruct-v0.1", "size": "46B", "context": "32k"},
-                {"name": "mistralai/Mistral-7B-Instruct-v0.1", "size": "7B", "context": "32k"},
-                {"name": "microsoft/DialoGPT-large", "size": "774M", "context": "1k"}
-            ],
-            "groq": [
-                {"name": "llama-3.1-70b-versatile", "size": "70B", "context": "131k"},
-                {"name": "llama-3.1-8b-instant", "size": "8B", "context": "131k"},
-                {"name": "mixtral-8x7b-32768", "size": "46B", "context": "32k"},
-                {"name": "gemma2-9b-it", "size": "9B", "context": "8k"},
-                {"name": "gemma-7b-it", "size": "7B", "context": "8k"}
-            ],
-            "together": [
-                {"name": "meta-llama/Llama-3-70b-chat-hf", "size": "70B", "context": "8k"},
-                {"name": "meta-llama/Llama-3-8b-chat-hf", "size": "8B", "context": "8k"},
-                {"name": "mistralai/Mixtral-8x7B-Instruct-v0.1", "size": "46B", "context": "32k"},
-                {"name": "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO", "size": "46B", "context": "32k"},
-                {"name": "teknium/OpenHermes-2.5-Mistral-7B", "size": "7B", "context": "32k"}
-            ],
-            "replicate": [
-                {"name": "meta/llama-2-70b-chat", "size": "70B", "context": "4k"},
-                {"name": "meta/llama-2-13b-chat", "size": "13B", "context": "4k"},
-                {"name": "meta/llama-2-7b-chat", "size": "7B", "context": "4k"},
-                {"name": "mistralai/mixtral-8x7b-instruct-v0.1", "size": "46B", "context": "32k"}
-            ],
-            "cohere": [
-                {"name": "command-r-plus", "size": "104B", "context": "128k"},
-                {"name": "command-r", "size": "35B", "context": "128k"},
-                {"name": "command", "size": "52B", "context": "4k"},
-                {"name": "command-light", "size": "6B", "context": "4k"}
-            ],
-            "mistral": [
-                {"name": "mistral-large-latest", "size": "large", "context": "128k"},
-                {"name": "mistral-medium-latest", "size": "medium", "context": "32k"},
-                {"name": "mistral-small-latest", "size": "small", "context": "32k"},
-                {"name": "codestral-latest", "size": "22B", "context": "32k"}
-            ],
-            "mock": [
-                {"name": "mock-model", "size": "any", "context": "unlimited"}
-            ]
-        }
+        # Get available models from cache or refresh if needed
+        global cached_models, last_refresh
+        
+        # Auto-refresh if cache is empty or older than 24 hours
+        should_refresh = False
+        if not cached_models or not last_refresh:
+            should_refresh = True
+        else:
+            from datetime import datetime, timedelta
+            try:
+                last_refresh_time = datetime.fromisoformat(last_refresh)
+                if datetime.now() - last_refresh_time > timedelta(hours=24):
+                    should_refresh = True
+            except:
+                should_refresh = True
+        
+        if should_refresh:
+            try:
+                refresh_result = await refresh_model_lists()
+                available_models = refresh_result["available_models"]
+                logger.info(f"Auto-refreshed model lists for {len(available_models)} providers")
+            except Exception as e:
+                logger.warning(f"Failed to auto-refresh models, using fallback: {e}")
+                available_models = await get_fallback_models()
+        else:
+            available_models = cached_models
+        
+        # If still empty, use fallback
+        if not available_models:
+            available_models = await get_fallback_models()
+        
+        # Load saved configurations or use defaults
+        config_file = Path(__file__).parent / "data" / "llm_configurations.json"
+        saved_configs = {}
+        
+        if config_file.exists():
+            try:
+                with open(config_file, 'r') as f:
+                    saved_configs = json.load(f)
+                logger.info(f"Loaded saved LLM configurations for {len(saved_configs)} tasks")
+            except Exception as e:
+                logger.warning(f"Failed to load saved configurations: {e}")
         
         # Default task configurations with provider diversity and optimization
         default_configs = {
@@ -1454,8 +1433,18 @@ async def get_llm_configurations():
             }
         }
         
+        # Merge saved configurations with defaults (saved configs override defaults)
+        final_configs = default_configs.copy()
+        for task_id, config in saved_configs.items():
+            if task_id in final_configs:
+                # Update existing config with saved values
+                final_configs[task_id].update(config)
+            else:
+                # Add new task config
+                final_configs[task_id] = config
+        
         return {
-            "task_configs": default_configs,
+            "task_configs": final_configs,
             "available_providers": available_providers,
             "available_models": available_models
         }
@@ -1477,10 +1466,16 @@ async def save_llm_configurations(request: dict):
                 if field not in config:
                     raise HTTPException(status_code=400, detail=f"Missing {field} in {task_id} config")
         
-        # TODO: Implement actual storage (database, config file, etc.)
-        logger.info(f"Saving LLM configurations for {len(task_configs)} tasks")
+        # Save configurations to file
+        config_file = Path(__file__).parent / "data" / "llm_configurations.json"
+        config_file.parent.mkdir(exist_ok=True)
         
-        # For now, log the configurations
+        with open(config_file, 'w') as f:
+            json.dump(task_configs, f, indent=2)
+        
+        logger.info(f"Saved LLM configurations for {len(task_configs)} tasks to {config_file}")
+        
+        # Log the configurations for debugging
         for task_id, config in task_configs.items():
             logger.info(f"Task {task_id}: {config['provider']}/{config['model']} temp={config['temperature']}")
         
@@ -1519,7 +1514,7 @@ async def get_llm_status():
         
         # Special handling for Ollama (local provider)
         try:
-            from src.lpe_core.llm_provider import OllamaProvider
+            from lpe_core.llm_provider import OllamaProvider
             ollama = OllamaProvider()
             # Test connection
             test_response = ollama.generate("test", "")
@@ -1532,14 +1527,31 @@ async def get_llm_status():
                 "status_message": "Local Ollama server running"
             }
         except Exception as e:
-            status["ollama"] = {
-                "available": False,
-                "error": str(e),
-                "model": None,
-                "has_key": True,
-                "key_valid": False,
-                "status_message": f"Ollama connection failed: {str(e)}"
-            }
+            # Try to check if Ollama is running at all
+            try:
+                import httpx
+                response = httpx.get("http://localhost:11434/api/tags", timeout=5)
+                if response.status_code == 200:
+                    models = response.json().get("models", [])
+                    status["ollama"] = {
+                        "available": True,
+                        "model": models[0]["name"] if models else "no models",
+                        "host": "http://localhost:11434",
+                        "has_key": True,
+                        "key_valid": True,
+                        "status_message": f"Ollama running with {len(models)} models"
+                    }
+                else:
+                    raise Exception("Ollama server not responding")
+            except Exception as e2:
+                status["ollama"] = {
+                    "available": False,
+                    "error": str(e),
+                    "model": None,
+                    "has_key": True,
+                    "key_valid": False,
+                    "status_message": f"Ollama connection failed: {str(e2)}"
+                }
         
         # Special handling for mock provider
         status["mock"] = {
@@ -1647,6 +1659,689 @@ async def list_stored_keys():
     except Exception as e:
         logger.error(f"Failed to list stored keys: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to list stored keys: {str(e)}")
+
+@app.post("/api/llm/refresh-models", summary="Refresh Model Lists from Live APIs")
+async def refresh_model_lists():
+    """Refresh model lists from all provider APIs and cache for performance."""
+    try:
+        refreshed_models = {}
+        
+        # Ollama models (local)
+        try:
+            import httpx
+            response = httpx.get("http://localhost:11434/api/tags", timeout=10)
+            if response.status_code == 200:
+                ollama_data = response.json()
+                ollama_models = []
+                for model in ollama_data.get("models", []):
+                    ollama_models.append({
+                        "name": model.get("name", ""),
+                        "size": model.get("details", {}).get("parameter_size", "unknown"),
+                        "family": model.get("details", {}).get("family", "unknown"),
+                        "context": model.get("details", {}).get("context_length", "unknown")
+                    })
+                refreshed_models["ollama"] = ollama_models
+            else:
+                refreshed_models["ollama"] = [{"name": "llama3.2:latest", "size": "7B"}]
+        except:
+            refreshed_models["ollama"] = [{"name": "llama3.2:latest", "size": "7B"}]
+        
+        # OpenAI models (live API)
+        try:
+            api_key = keychain_manager.retrieve_api_key("openai")
+            if api_key:
+                import httpx
+                headers = {"Authorization": f"Bearer {api_key}"}
+                response = httpx.get("https://api.openai.com/v1/models", headers=headers, timeout=15)
+                if response.status_code == 200:
+                    openai_data = response.json()
+                    openai_models = []
+                    # Filter for text generation models only
+                    for model in openai_data.get("data", []):
+                        model_id = model.get("id", "")
+                        # Filter for chat/text models (exclude embedding, tts, etc.)
+                        if any(prefix in model_id for prefix in ["gpt-4", "gpt-3.5", "o1"]) and not any(exclude in model_id for exclude in ["embed", "tts", "whisper", "dall-e"]):
+                            # Determine context and size based on model
+                            if "gpt-4o" in model_id:
+                                size, context = "large", "128k"
+                            elif "gpt-4-turbo" in model_id:
+                                size, context = "large", "128k"
+                            elif "gpt-4" in model_id:
+                                size, context = "large", "8k"
+                            elif "o1" in model_id:
+                                size, context = "large", "200k"
+                            elif "gpt-3.5" in model_id:
+                                size, context = "medium", "16k"
+                            else:
+                                size, context = "medium", "4k"
+                            
+                            openai_models.append({
+                                "name": model_id,
+                                "size": size,
+                                "context": context
+                            })
+                    refreshed_models["openai"] = sorted(openai_models, key=lambda x: x["name"])
+                else:
+                    raise Exception("OpenAI API error")
+            else:
+                raise Exception("No API key")
+        except:
+            # Fallback to known models
+            refreshed_models["openai"] = [
+                {"name": "gpt-4o", "size": "large", "context": "128k"},
+                {"name": "gpt-4o-mini", "size": "small", "context": "128k"},
+                {"name": "gpt-4-turbo", "size": "large", "context": "128k"},
+                {"name": "gpt-4", "size": "large", "context": "8k"},
+                {"name": "gpt-3.5-turbo", "size": "medium", "context": "16k"}
+            ]
+        
+        # Anthropic models (live API)
+        try:
+            api_key = keychain_manager.retrieve_api_key("anthropic")
+            if api_key:
+                import httpx
+                headers = {
+                    "x-api-key": api_key,
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01"
+                }
+                response = httpx.get("https://api.anthropic.com/v1/models", headers=headers, timeout=15)
+                if response.status_code == 200:
+                    anthropic_data = response.json()
+                    anthropic_models = []
+                    for model in anthropic_data.get("data", []):
+                        model_id = model.get("id", "")
+                        # Determine size and context based on model name
+                        if "opus" in model_id:
+                            size, context = "large", "200k"
+                        elif "sonnet" in model_id:
+                            size, context = "large", "200k"
+                        elif "haiku" in model_id:
+                            size, context = "small", "200k"
+                        else:
+                            size, context = "medium", "200k"
+                        
+                        anthropic_models.append({
+                            "name": model_id,
+                            "size": size,
+                            "context": context
+                        })
+                    refreshed_models["anthropic"] = sorted(anthropic_models, key=lambda x: x["name"])
+                else:
+                    raise Exception(f"Anthropic API error: {response.status_code}")
+            else:
+                raise Exception("No API key")
+        except Exception as e:
+            logger.warning(f"Failed to fetch Anthropic models: {e}")
+            # Fallback to known models
+            refreshed_models["anthropic"] = [
+                {"name": "claude-3-5-sonnet-20241022", "size": "large", "context": "200k"},
+                {"name": "claude-3-5-sonnet-20240620", "size": "large", "context": "200k"},
+                {"name": "claude-3-opus-20240229", "size": "large", "context": "200k"},
+                {"name": "claude-3-sonnet-20240229", "size": "medium", "context": "200k"},
+                {"name": "claude-3-haiku-20240307", "size": "small", "context": "200k"}
+            ]
+        
+        # Google AI models (live API)
+        try:
+            api_key = keychain_manager.retrieve_api_key("google")
+            if api_key:
+                import httpx
+                response = httpx.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", timeout=15)
+                if response.status_code == 200:
+                    google_data = response.json()
+                    google_models = []
+                    for model in google_data.get("models", []):
+                        model_name = model.get("name", "").replace("models/", "")
+                        # Only include text generation models
+                        if "gemini" in model_name.lower() and "vision" not in model_name.lower():
+                            # Determine size and context
+                            if "1.5-pro" in model_name:
+                                size, context = "large", "2M"
+                            elif "1.5-flash" in model_name:
+                                size, context = "medium", "1M"
+                            elif "1.0-pro" in model_name:
+                                size, context = "medium", "32k"
+                            else:
+                                size, context = "medium", "32k"
+                            
+                            google_models.append({
+                                "name": model_name,
+                                "size": size,
+                                "context": context
+                            })
+                    refreshed_models["google"] = sorted(google_models, key=lambda x: x["name"])
+                else:
+                    raise Exception(f"Google API error: {response.status_code}")
+            else:
+                raise Exception("No API key")
+        except Exception as e:
+            logger.warning(f"Failed to fetch Google models: {e}")
+            # Fallback to known models
+            refreshed_models["google"] = [
+                {"name": "gemini-1.5-pro", "size": "large", "context": "2M"},
+                {"name": "gemini-1.5-flash", "size": "medium", "context": "1M"},
+                {"name": "gemini-1.0-pro", "size": "medium", "context": "32k"}
+            ]
+        
+        # Groq models (live API)
+        try:
+            api_key = keychain_manager.retrieve_api_key("groq")
+            if api_key:
+                import httpx
+                headers = {"Authorization": f"Bearer {api_key}"}
+                response = httpx.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=15)
+                if response.status_code == 200:
+                    groq_data = response.json()
+                    groq_models = []
+                    for model in groq_data.get("data", []):
+                        model_id = model.get("id", "")
+                        groq_models.append({
+                            "name": model_id,
+                            "size": "unknown",
+                            "context": "32k"
+                        })
+                    refreshed_models["groq"] = sorted(groq_models, key=lambda x: x["name"])
+                else:
+                    raise Exception("Groq API error")
+            else:
+                raise Exception("No API key")
+        except:
+            refreshed_models["groq"] = [
+                {"name": "llama-3.1-70b-versatile", "size": "70B", "context": "32k"},
+                {"name": "llama-3.1-8b-instant", "size": "8B", "context": "32k"},
+                {"name": "mixtral-8x7b-32768", "size": "8x7B", "context": "32k"}
+            ]
+        
+        # Other providers (use static lists for now)
+        refreshed_models["huggingface"] = [
+            {"name": "meta-llama/Llama-2-70b-chat-hf", "size": "70B", "context": "4k"},
+            {"name": "meta-llama/Llama-2-13b-chat-hf", "size": "13B", "context": "4k"},
+            {"name": "mistralai/Mistral-7B-Instruct-v0.1", "size": "7B", "context": "8k"}
+        ]
+        
+        refreshed_models["together"] = [
+            {"name": "meta-llama/Llama-2-70b-chat-hf", "size": "70B", "context": "4k"},
+            {"name": "mistralai/Mixtral-8x7B-Instruct-v0.1", "size": "8x7B", "context": "32k"}
+        ]
+        
+        refreshed_models["replicate"] = [
+            {"name": "meta/llama-2-70b-chat", "size": "70B", "context": "4k"},
+            {"name": "mistralai/mixtral-8x7b-instruct-v0.1", "size": "8x7B", "context": "32k"}
+        ]
+        
+        refreshed_models["cohere"] = [
+            {"name": "command-r-plus", "size": "large", "context": "128k"},
+            {"name": "command-r", "size": "medium", "context": "128k"},
+            {"name": "command", "size": "medium", "context": "4k"}
+        ]
+        
+        refreshed_models["mistral"] = [
+            {"name": "mistral-large-latest", "size": "large", "context": "32k"},
+            {"name": "mistral-medium-latest", "size": "medium", "context": "32k"},
+            {"name": "mistral-small-latest", "size": "small", "context": "32k"}
+        ]
+        
+        refreshed_models["mock"] = [
+            {"name": "mock-model", "size": "test", "context": "unlimited"}
+        ]
+        
+        # Store refresh timestamp
+        from datetime import datetime
+        refresh_timestamp = datetime.now().isoformat()
+        
+        # Cache the models globally (in a real app, you'd use Redis or database)
+        global cached_models, last_refresh
+        cached_models = refreshed_models
+        last_refresh = refresh_timestamp
+        
+        return {
+            "status": "success",
+            "message": "Model lists refreshed from live APIs",
+            "refreshed_at": refresh_timestamp,
+            "model_counts": {provider: len(models) for provider, models in refreshed_models.items()},
+            "available_models": refreshed_models
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh model lists: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh model lists: {str(e)}")
+
+@app.post("/api/llm/test-live-apis", summary="Test Live API Connections")
+async def test_live_api_connections():
+    """Test individual provider API connections for debugging."""
+    results = {}
+    
+    # Test OpenAI
+    try:
+        api_key = keychain_manager.retrieve_api_key("openai")
+        if api_key:
+            import httpx
+            headers = {"Authorization": f"Bearer {api_key}"}
+            response = httpx.get("https://api.openai.com/v1/models", headers=headers, timeout=15)
+            results["openai"] = {
+                "status": response.status_code,
+                "success": response.status_code == 200,
+                "model_count": len(response.json().get("data", [])) if response.status_code == 200 else 0,
+                "error": None if response.status_code == 200 else response.text[:200]
+            }
+        else:
+            results["openai"] = {"status": "no_key", "success": False, "error": "No API key stored"}
+    except Exception as e:
+        results["openai"] = {"status": "error", "success": False, "error": str(e)}
+    
+    # Test Anthropic
+    try:
+        api_key = keychain_manager.retrieve_api_key("anthropic")
+        if api_key:
+            import httpx
+            headers = {"x-api-key": api_key, "Content-Type": "application/json", "anthropic-version": "2023-06-01"}
+            response = httpx.get("https://api.anthropic.com/v1/models", headers=headers, timeout=15)
+            results["anthropic"] = {
+                "status": response.status_code,
+                "success": response.status_code == 200,
+                "model_count": len(response.json().get("data", [])) if response.status_code == 200 else 0,
+                "error": None if response.status_code == 200 else response.text[:200]
+            }
+        else:
+            results["anthropic"] = {"status": "no_key", "success": False, "error": "No API key stored"}
+    except Exception as e:
+        results["anthropic"] = {"status": "error", "success": False, "error": str(e)}
+    
+    # Test Google
+    try:
+        api_key = keychain_manager.retrieve_api_key("google")
+        if api_key:
+            import httpx
+            response = httpx.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", timeout=15)
+            results["google"] = {
+                "status": response.status_code,
+                "success": response.status_code == 200,
+                "model_count": len(response.json().get("models", [])) if response.status_code == 200 else 0,
+                "error": None if response.status_code == 200 else response.text[:200]
+            }
+        else:
+            results["google"] = {"status": "no_key", "success": False, "error": "No API key stored"}
+    except Exception as e:
+        results["google"] = {"status": "error", "success": False, "error": str(e)}
+    
+    # Test Groq
+    try:
+        api_key = keychain_manager.retrieve_api_key("groq")
+        if api_key:
+            import httpx
+            headers = {"Authorization": f"Bearer {api_key}"}
+            response = httpx.get("https://api.groq.com/openai/v1/models", headers=headers, timeout=15)
+            results["groq"] = {
+                "status": response.status_code,
+                "success": response.status_code == 200,
+                "model_count": len(response.json().get("data", [])) if response.status_code == 200 else 0,
+                "error": None if response.status_code == 200 else response.text[:200]
+            }
+        else:
+            results["groq"] = {"status": "no_key", "success": False, "error": "No API key stored"}
+    except Exception as e:
+        results["groq"] = {"status": "error", "success": False, "error": str(e)}
+    
+    return {
+        "test_results": results,
+        "summary": {
+            "total_tested": len(results),
+            "successful": sum(1 for r in results.values() if r.get("success", False)),
+            "with_keys": sum(1 for r in results.values() if r.get("status") != "no_key"),
+            "live_api_confirmed": [provider for provider, result in results.items() if result.get("success", False)]
+        }
+    }
+
+# Global cache for models
+cached_models = {}
+last_refresh = None
+
+async def get_fallback_models():
+    """Fallback static model lists if live APIs fail."""
+    return {
+        "ollama": [{"name": "llama3.2:latest", "size": "7B"}],
+        "openai": [
+            {"name": "gpt-4o", "size": "large", "context": "128k"},
+            {"name": "gpt-4o-mini", "size": "small", "context": "128k"},
+            {"name": "gpt-4-turbo", "size": "large", "context": "128k"},
+            {"name": "gpt-4", "size": "large", "context": "8k"},
+            {"name": "gpt-3.5-turbo", "size": "medium", "context": "16k"}
+        ],
+        "anthropic": [
+            {"name": "claude-3-5-sonnet-20241022", "size": "large", "context": "200k"},
+            {"name": "claude-3-opus-20240229", "size": "large", "context": "200k"},
+            {"name": "claude-3-haiku-20240307", "size": "small", "context": "200k"}
+        ],
+        "google": [
+            {"name": "gemini-1.5-pro", "size": "large", "context": "2M"},
+            {"name": "gemini-1.5-flash", "size": "medium", "context": "1M"}
+        ],
+        "groq": [
+            {"name": "llama-3.1-70b-versatile", "size": "70B", "context": "32k"},
+            {"name": "llama-3.1-8b-instant", "size": "8B", "context": "32k"}
+        ],
+        "huggingface": [{"name": "meta-llama/Llama-2-7b-chat-hf", "size": "7B", "context": "4k"}],
+        "together": [{"name": "meta-llama/Llama-3-8b-chat-hf", "size": "8B", "context": "8k"}],
+        "replicate": [{"name": "meta/llama-2-70b-chat", "size": "70B", "context": "4k"}],
+        "cohere": [{"name": "command-r-plus", "size": "large", "context": "128k"}],
+        "mistral": [{"name": "mistral-large-latest", "size": "large", "context": "32k"}],
+        "mock": [{"name": "mock-model", "size": "test", "context": "unlimited"}]
+    }
+
+@app.get("/api/ollama/models", summary="List Ollama Models")
+async def list_ollama_models():
+    """List all locally available Ollama models."""
+    try:
+        import httpx
+        response = httpx.get("http://localhost:11434/api/tags", timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            models = data.get("models", [])
+            
+            # Format the models for easier consumption
+            formatted_models = []
+            for model in models:
+                formatted_models.append({
+                    "name": model.get("name", ""),
+                    "size": model.get("size", 0),
+                    "modified_at": model.get("modified_at", ""),
+                    "digest": model.get("digest", "")[:12] + "..." if model.get("digest") else "",
+                    "details": {
+                        "family": model.get("details", {}).get("family", ""),
+                        "format": model.get("details", {}).get("format", ""),
+                        "parameter_size": model.get("details", {}).get("parameter_size", "")
+                    }
+                })
+            
+            return {
+                "models": formatted_models,
+                "total_count": len(formatted_models),
+                "ollama_running": True
+            }
+        else:
+            raise HTTPException(status_code=503, detail="Ollama server not responding")
+            
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=503, detail="Ollama server timeout")
+    except Exception as e:
+        logger.error(f"Failed to fetch Ollama models: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch models: {str(e)}")
+
+@app.post("/api/ollama/pull", summary="Pull Ollama Model")
+async def pull_ollama_model(request: dict):
+    """Pull a new model from Ollama registry."""
+    try:
+        model_name = request.get("model")
+        if not model_name:
+            raise HTTPException(status_code=400, detail="Model name is required")
+        
+        import httpx
+        
+        # Start the pull request
+        async with httpx.AsyncClient(timeout=300) as client:  # 5 minute timeout
+            response = await client.post(
+                "http://localhost:11434/api/pull",
+                json={"name": model_name},
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                return {
+                    "status": "success", 
+                    "message": f"Successfully pulled model: {model_name}",
+                    "model": model_name
+                }
+            else:
+                error_text = response.text
+                raise HTTPException(
+                    status_code=response.status_code, 
+                    detail=f"Failed to pull model: {error_text}"
+                )
+                
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=408, detail="Model pull timeout - check Ollama logs")
+    except Exception as e:
+        logger.error(f"Failed to pull Ollama model {model_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to pull model: {str(e)}")
+
+@app.delete("/api/ollama/models/{model_name}", summary="Delete Ollama Model")
+async def delete_ollama_model(model_name: str):
+    """Delete a locally stored Ollama model."""
+    try:
+        import httpx
+        
+        response = httpx.delete(
+            "http://localhost:11434/api/delete",
+            json={"name": model_name},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            return {
+                "status": "success",
+                "message": f"Successfully deleted model: {model_name}",
+                "model": model_name
+            }
+        else:
+            error_text = response.text
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Failed to delete model: {error_text}"
+            )
+            
+    except Exception as e:
+        logger.error(f"Failed to delete Ollama model {model_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete model: {str(e)}")
+
+@app.get("/api/ollama/status", summary="Ollama Server Status")
+async def ollama_server_status():
+    """Check if Ollama server is running and get basic info."""
+    try:
+        import httpx
+        
+        # Check if server is running
+        response = httpx.get("http://localhost:11434/api/version", timeout=5)
+        
+        if response.status_code == 200:
+            version_data = response.json()
+            
+            # Get model count
+            models_response = httpx.get("http://localhost:11434/api/tags", timeout=5)
+            model_count = 0
+            if models_response.status_code == 200:
+                models = models_response.json().get("models", [])
+                model_count = len(models)
+            
+            return {
+                "running": True,
+                "version": version_data.get("version", "unknown"),
+                "model_count": model_count,
+                "host": "http://localhost:11434"
+            }
+        else:
+            return {
+                "running": False,
+                "error": "Server not responding",
+                "host": "http://localhost:11434"
+            }
+            
+    except Exception as e:
+        return {
+            "running": False,
+            "error": str(e),
+            "host": "http://localhost:11434"
+        }
+
+@app.post("/api/extract-attributes", summary="Extract Narrative Attributes")
+async def extract_attributes(request: dict):
+    """Extract personas, namespaces, and styles from text using LLM analysis."""
+    try:
+        text = request.get("text", "").strip()
+        mode = request.get("mode", "extract")  # extract, enhance, search
+        context = request.get("context", None)
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="Text is required")
+        
+        # Get LLM provider for analysis
+        provider = get_llm_provider()
+        
+        # Build analysis prompt based on mode
+        if mode == "extract":
+            system_prompt = """You are an expert at extracting narrative attributes from text. Analyze the given text and identify potential:
+
+1. PERSONAS - Character types, perspectives, voices, or viewpoints
+2. NAMESPACES - Universes, worlds, contexts, or conceptual frameworks  
+3. STYLES - Writing approaches, tones, or linguistic patterns
+
+For each attribute you identify, provide:
+- type: "persona", "namespace", or "style"
+- name: A concise, memorable name
+- description: One sentence explanation
+- content: 2-3 sentences of detailed description
+- confidence: Float between 0.0-1.0
+- keywords: Array of 3-5 relevant keywords
+
+Return valid JSON with an "attributes" array."""
+
+            user_prompt = f"Analyze this text for narrative attributes:\n\n{text}"
+            
+        elif mode == "enhance":
+            if not context:
+                raise HTTPException(status_code=400, detail="Context required for enhance mode")
+                
+            system_prompt = """You are enhancing an existing attribute with new information from text. The user will provide an existing attribute context and new text. Suggest improvements, expansions, or refinements to the attribute based on the new text.
+
+Return JSON with enhanced attribute information."""
+
+            user_prompt = f"Existing attribute context:\n{context}\n\nNew text to incorporate:\n{text}"
+            
+        else:  # search mode
+            system_prompt = """You are finding semantic connections between text and existing attributes. Analyze the text and identify which types of attributes would be most relevant for understanding or transforming this text.
+
+Return JSON with suggested attribute types and search queries."""
+
+            user_prompt = f"What types of attributes would be most useful for this text:\n\n{text}"
+        
+        try:
+            # Generate analysis
+            response = provider.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.3,
+                max_tokens=1500
+            )
+            
+            # Try to parse JSON response
+            import json
+            try:
+                analysis = json.loads(response)
+            except json.JSONDecodeError:
+                # Fallback to mock analysis if JSON parsing fails
+                analysis = generate_mock_attribute_analysis(text, mode)
+            
+        except Exception as e:
+            logger.warning(f"LLM analysis failed, using fallback: {e}")
+            analysis = generate_mock_attribute_analysis(text, mode)
+        
+        # Add metadata
+        analysis["mode"] = mode
+        analysis["text_length"] = len(text)
+        analysis["timestamp"] = datetime.now().isoformat()
+        
+        # If search mode, add mock similar attributes
+        if mode == "search":
+            analysis["similar_attributes"] = [
+                {
+                    "id": "similar_1",
+                    "type": "persona",
+                    "name": "Analytical Thinker",
+                    "description": "Someone who breaks down complex ideas systematically",
+                    "similarity": 0.85
+                },
+                {
+                    "id": "similar_2", 
+                    "type": "namespace",
+                    "name": "Academic Reality",
+                    "description": "Universe where knowledge and research are primary forces",
+                    "similarity": 0.72
+                }
+            ]
+        
+        return analysis
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to extract attributes: {e}")
+        raise HTTPException(status_code=500, detail=f"Attribute extraction failed: {str(e)}")
+
+def generate_mock_attribute_analysis(text: str, mode: str):
+    """Generate mock analysis when LLM fails."""
+    words = text.lower().split()
+    
+    attributes = []
+    
+    # Mock persona extraction
+    if any(word in words for word in ["think", "believe", "feel", "consider", "wonder"]):
+        attributes.append({
+            "id": f"persona_{len(attributes)}",
+            "type": "persona",
+            "name": "Contemplative Mind",
+            "description": "A perspective that seeks deeper understanding through reflection",
+            "content": "This persona approaches situations with curiosity and thoughtfulness, taking time to consider multiple angles before forming conclusions. They value insight over quick answers.",
+            "confidence": 0.78,
+            "keywords": ["contemplative", "reflective", "thoughtful", "curious", "introspective"],
+            "source_text": text[:100] + "..." if len(text) > 100 else text
+        })
+    
+    # Mock namespace extraction  
+    if any(word in words for word in ["world", "reality", "universe", "system", "framework"]):
+        attributes.append({
+            "id": f"namespace_{len(attributes)}",
+            "type": "namespace", 
+            "name": "Conceptual Realm",
+            "description": "A universe where ideas and concepts have tangible form and influence",
+            "content": "In this reality, abstract thoughts manifest as observable phenomena. Ideas compete for attention and validity in a marketplace of concepts, where the strength of an argument determines its physical presence.",
+            "confidence": 0.72,
+            "keywords": ["conceptual", "abstract", "ideational", "theoretical", "mental"],
+            "source_text": text[:100] + "..." if len(text) > 100 else text
+        })
+    
+    # Mock style extraction
+    if len(words) > 20:
+        if any(word in words for word in ["analyze", "examine", "study", "research", "investigate"]):
+            style_name = "Analytical Expression"
+            style_desc = "Clear, methodical communication that breaks down complex topics"
+            keywords = ["analytical", "systematic", "precise", "methodical", "logical"]
+        elif any(word in words for word in ["beautiful", "elegant", "graceful", "flowing", "artistic"]):
+            style_name = "Aesthetic Expression"  
+            style_desc = "Flowing, beautiful language that emphasizes grace and elegance"
+            keywords = ["aesthetic", "graceful", "flowing", "elegant", "artistic"]
+        else:
+            style_name = "Direct Expression"
+            style_desc = "Straightforward, clear communication focused on clarity"
+            keywords = ["direct", "clear", "straightforward", "simple", "accessible"]
+            
+        attributes.append({
+            "id": f"style_{len(attributes)}",
+            "type": "style",
+            "name": style_name,
+            "description": style_desc, 
+            "content": f"This style prioritizes {keywords[0]} communication, using {keywords[1]} approaches to convey ideas effectively. The language tends to be {keywords[2]} while maintaining {keywords[3]} structure.",
+            "confidence": 0.65,
+            "keywords": keywords,
+            "source_text": text[:100] + "..." if len(text) > 100 else text
+        })
+    
+    return {
+        "attributes": attributes,
+        "analysis_method": "mock_fallback",
+        "text_analyzed": len(text),
+        "mode": mode
+    }
 
 # Cleanup old sessions periodically
 @app.on_event("startup")
