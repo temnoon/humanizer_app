@@ -36,10 +36,29 @@ Rails.application.routes.draw do
   # Archive/Python API bridge routes
   namespace :api do
     namespace :v1 do
+      # Legacy archive routes
       get 'archive/summary/:id', to: 'archive#summary'
       post 'archive/humanize', to: 'archive#humanize'
       post 'archive/analyze_discourse', to: 'archive#analyze_discourse'
       get 'archive/status', to: 'archive#status'
+      
+      # Unified Archive routes
+      resources :unified_archive, only: [:index, :show] do
+        member do
+          get :thread
+          post :enhance
+        end
+        
+        collection do
+          get :search
+          get :statistics
+          get :sources
+          get :authors
+          get :timeline
+          post :import
+          get :export
+        end
+      end
     end
   end
 
