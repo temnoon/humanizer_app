@@ -19,7 +19,16 @@ import {
   BarChart3,
   Eye,
   Terminal,
-  Package
+  Package,
+  Archive,
+  Target,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  TrendingUp,
+  Cpu,
+  Shield,
+  BookOpen
 } from "lucide-react";
 import ReactDiffViewer from "react-diff-viewer-continued";
 import { cn } from "./utils";
@@ -38,9 +47,12 @@ import VisionAnalysis from "./components/VisionAnalysis";
 import AttributeStudio from "./components/AttributeStudio";
 import LLMConfigManager from "./components/LLMConfigManager";
 import ErrorBoundary from "./components/ErrorBoundary";
-import SimpleTransformApp from "./SimpleTransformApp";
+import ConversationBrowser from "./ConversationBrowser";
 import EnhancedAPIConsole from "./components/EnhancedAPIConsole";
 import BatchProcessor from "./components/BatchProcessor";
+import ArchiveExplorer from "./components/ArchiveExplorer";
+import TransformationManager from "./components/TransformationManager";
+import WritebookEditor from "./components/WritebookEditor";
 import { AttributeProvider } from "./contexts/AttributeContext";
 
 function App() {
@@ -61,6 +73,51 @@ function App() {
   const [showSteps, setShowSteps] = useState(true);
   const [maieuticResult, setMaieuticResult] = useState(null);
   const [savedTransformation, setSavedTransformation] = useState(null);
+  const [conversationBrowserParams, setConversationBrowserParams] = useState({
+    initialConversationId: null,
+    initialMessageId: null
+  });
+
+  // Handle URL parameters for direct conversation links
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const conversationId = urlParams.get('conversation');
+    const messageId = urlParams.get('message');
+    
+    if (conversationId) {
+      navigateToConversationBrowser(conversationId, messageId);
+      // Clear URL parameters to avoid stale state on refresh
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+  
+  // Balanced transformation state
+  const [balanceAnalysis, setBalanceAnalysis] = useState(null);
+  const [isAnalyzingBalance, setIsAnalyzingBalance] = useState(false);
+  const [balancedResult, setBalancedResult] = useState(null);
+  const [useBalancedTransformation, setUseBalancedTransformation] = useState(true);
+
+  // Navigation helper for switching to conversation browser with specific parameters
+  const navigateToConversationBrowser = (conversationId, messageId = null) => {
+    setConversationBrowserParams({
+      initialConversationId: conversationId,
+      initialMessageId: messageId
+    });
+    setActiveTab("conversation");
+    
+    // Clear the parameters after a brief delay to prevent stale state
+    setTimeout(() => {
+      setConversationBrowserParams({
+        initialConversationId: null,
+        initialMessageId: null
+      });
+    }, 1000);
+  };
+
+  // Navigation helper for switching to writebook editor
+  const navigateToWritebook = () => {
+    setActiveTab("writebook");
+  };
 
   // Load transformation options and models on mount
   useEffect(() => {
@@ -93,62 +150,129 @@ function App() {
     }
   }, [isDark]);
 
+  const analyzeBalance = async () => {
+    if (!narrative.trim()) return;
+
+    setIsAnalyzingBalance(true);
+    setError(null);
+
+    try {
+      const response = await fetch("http://localhost:8100/api/balanced/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persona: selectedPersona,
+          namespace: selectedNamespace,
+          style: selectedStyle,
+          narrative: narrative,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Balance analysis failed");
+      }
+
+      const data = await response.json();
+      setBalanceAnalysis(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsAnalyzingBalance(false);
+    }
+  };
+
   const handleTransform = async () => {
     if (!narrative.trim()) return;
 
     setIsProcessing(true);
     setError(null);
     setTransformationSteps([]); // Clear previous steps
+    setBalancedResult(null);
 
     try {
-      // Start transformation request
-      const response = await fetch("/transform", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          narrative,
-          target_persona: selectedPersona,
-          target_namespace: selectedNamespace,
-          target_style: selectedStyle,
-          show_steps: showSteps,
-        }),
-      });
+      let response, data;
 
-      if (!response.ok) {
-        throw new Error("Transformation failed");
-      }
+      if (useBalancedTransformation) {
+        // Use the new balanced transformation API
+        response = await fetch("http://localhost:8100/api/balanced/transform", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            narrative,
+            persona: selectedPersona,
+            namespace: selectedNamespace,
+            style: selectedStyle,
+            show_steps: showSteps,
+            apply_balancing: true,
+          }),
+        });
 
-      const data = await response.json();
-      
-      // Set up WebSocket for progress updates if transform_id is provided
-      if (data.transform_id) {
-        const ws = new WebSocket(`ws://localhost:8100/ws/transform/${data.transform_id}`);
+        if (!response.ok) {
+          throw new Error("Balanced transformation failed");
+        }
+
+        data = await response.json();
+        setBalancedResult(data);
         
-        ws.onmessage = (event) => {
-          const progressData = JSON.parse(event.data);
-          if (progressData.type === "progress") {
-            // Update UI with real-time progress
-            console.log(`Step ${progressData.step} ${progressData.status}:`, progressData.data);
-            // You can add visual progress indicators here
+        // Convert to legacy format for compatibility
+        setDeconstruction({ elements: data.source_dna });
+        setProjection({ 
+          narrative: data.transformed_narrative,
+          metadata: {
+            preservation_score: data.overall_preservation_score,
+            balancing_analysis: data.balancing_analysis,
+            performance_metrics: data.performance_metrics
           }
-        };
+        });
+        setTransformationSteps(data.steps);
+        setTotalDuration(data.processing_time_ms);
+      } else {
+        // Use the legacy transformation API
+        response = await fetch("/transform", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            narrative,
+            target_persona: selectedPersona,
+            target_namespace: selectedNamespace,
+            target_style: selectedStyle,
+            show_steps: showSteps,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("Legacy transformation failed");
+        }
+
+        data = await response.json();
         
-        ws.onerror = (error) => {
-          console.warn("WebSocket error:", error);
-        };
+        // Set up WebSocket for progress updates if transform_id is provided
+        if (data.transform_id) {
+          const ws = new WebSocket(`ws://localhost:8100/ws/transform/${data.transform_id}`);
+          
+          ws.onmessage = (event) => {
+            const progressData = JSON.parse(event.data);
+            if (progressData.type === "progress") {
+              console.log(`Step ${progressData.step} ${progressData.status}:`, progressData.data);
+            }
+          };
+          
+          ws.onerror = (error) => {
+            console.warn("WebSocket error:", error);
+          };
+          
+          setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.close();
+            }
+          }, 600000); // 10 minutes
+        }
         
-        // Clean up WebSocket after a reasonable time
-        setTimeout(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.close();
-          }
-        }, 600000); // 10 minutes
+        setDeconstruction(data.original);
+        setProjection(data.projection);
+        setTransformationSteps(data.steps);
+        setTotalDuration(data.total_duration_ms);
       }
-      
-      setDeconstruction(data.original);
-      setProjection(data.projection);
-      setTransformationSteps(data.steps);
-      setTotalDuration(data.total_duration_ms);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -192,16 +316,47 @@ function App() {
     }
   };
 
-  const tabs = [
-    { id: "simple", label: "Simple", icon: Sparkles },
+  // Helper functions for balance analysis display
+  const getBalanceStatusColor = (isBalanced, templateRisk) => {
+    if (isBalanced) return 'text-green-400';
+    if (templateRisk > 0.7) return 'text-red-400';
+    return 'text-yellow-400';
+  };
+
+  const getBalanceStatusIcon = (isBalanced, templateRisk) => {
+    if (isBalanced) return <CheckCircle className="w-5 h-5" />;
+    if (templateRisk > 0.7) return <XCircle className="w-5 h-5" />;
+    return <AlertTriangle className="w-5 h-5" />;
+  };
+
+  const getBalanceStatusText = (isBalanced, templateRisk) => {
+    if (isBalanced) return 'Well Balanced';
+    if (templateRisk > 0.7) return 'High Template Risk';
+    return 'Needs Adjustment';
+  };
+
+  // Primary workflow tabs (main row)
+  const primaryTabs = [
+    { id: "conversation", label: "Conversations", icon: MessageSquare },
     { id: "transform", label: "Transform", icon: Zap },
+    { id: "transformations", label: "Saved", icon: Archive },
+    { id: "writebook", label: "Writebook", icon: BookOpen },
+    { id: "archive", label: "Archive", icon: BarChart3 },
+  ];
+
+  // Secondary feature tabs (second row)
+  const secondaryTabs = [
     { id: "lamish", label: "Attribute Studio", icon: Layers },
-    { id: "llm-config", label: "LLM Config", icon: Settings },
-    { id: "batch", label: "Batch", icon: Package },
-    { id: "api-console", label: "API Console", icon: Terminal },
     { id: "maieutic", label: "Maieutic", icon: Brain },
     { id: "translation", label: "Translation", icon: Languages },
     { id: "vision", label: "Vision", icon: Eye },
+  ];
+
+  // System/developer tabs (third row)
+  const systemTabs = [
+    { id: "llm-config", label: "LLM Config", icon: Settings },
+    { id: "batch", label: "Batch", icon: Package },
+    { id: "api-console", label: "API Console", icon: Terminal },
   ];
 
   return (
@@ -258,23 +413,74 @@ function App() {
         </div>
       </header>
 
-      {/* Tab Navigation */}
-      <nav className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      {/* Tab Navigation - Three Tier System */}
+      <nav className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 space-y-3">
+        {/* Primary Workflow Tabs */}
         <div className="flex space-x-1 bg-white/5 rounded-lg p-1">
-          {tabs.map((tab) => {
+          {primaryTabs.map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all",
+                  "flex items-center space-x-2 px-6 py-3 rounded-lg font-medium transition-all",
                   activeTab === tab.id
                     ? "bg-purple-600 text-white shadow-lg"
                     : "text-muted-foreground hover:text-white hover:bg-white/10"
                 )}
               >
+                <Icon className="w-5 h-5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Secondary Feature Tabs */}
+        <div className="flex space-x-1 bg-white/3 rounded-lg p-1">
+          <div className="flex items-center px-3 py-1 text-xs text-gray-400 font-medium">
+            ANALYSIS
+          </div>
+          {secondaryTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all text-sm",
+                  activeTab === tab.id
+                    ? "bg-blue-600 text-white shadow-lg"
+                    : "text-muted-foreground hover:text-white hover:bg-white/10"
+                )}
+              >
                 <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* System/Developer Tabs */}
+        <div className="flex space-x-1 bg-white/2 rounded-lg p-1">
+          <div className="flex items-center px-3 py-1 text-xs text-gray-500 font-medium">
+            SYSTEM
+          </div>
+          {systemTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center space-x-2 px-3 py-1.5 rounded-lg font-medium transition-all text-sm",
+                  activeTab === tab.id
+                    ? "bg-gray-600 text-white shadow-lg"
+                    : "text-muted-foreground hover:text-white hover:bg-white/10"
+                )}
+              >
+                <Icon className="w-3 h-3" />
                 <span>{tab.label}</span>
               </button>
             );
@@ -320,14 +526,19 @@ function App() {
 
           {/* Tab Content */}
           <AnimatePresence mode="wait">
-            {activeTab === "simple" && (
+            {activeTab === "conversation" && (
               <motion.div
-                key="simple"
+                key="conversation"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
               >
-                <SimpleTransformApp />
+                <ConversationBrowser 
+                  initialConversationId={conversationBrowserParams.initialConversationId}
+                  initialMessageId={conversationBrowserParams.initialMessageId}
+                  onNavigateToConversation={navigateToConversationBrowser}
+                  onNavigateToWritebook={navigateToWritebook}
+                />
               </motion.div>
             )}
 
@@ -339,6 +550,44 @@ function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-8"
               >
+                {/* Transformation Mode Toggle */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 }}
+                  className="glass rounded-2xl p-6"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <Shield className="w-5 h-5 text-purple-400" />
+                      <div>
+                        <h3 className="text-lg font-semibold">Transformation Mode</h3>
+                        <p className="text-sm text-gray-400">Choose between balanced and legacy transformation</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <span className={`text-sm ${!useBalancedTransformation ? 'text-white' : 'text-gray-400'}`}>
+                        Legacy
+                      </span>
+                      <button
+                        onClick={() => setUseBalancedTransformation(!useBalancedTransformation)}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                          useBalancedTransformation ? 'bg-purple-600' : 'bg-gray-600'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                            useBalancedTransformation ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                      <span className={`text-sm ${useBalancedTransformation ? 'text-white' : 'text-gray-400'}`}>
+                        Balanced
+                      </span>
+                    </div>
+                  </div>
+                </motion.div>
+
                 {/* Transformation Controls */}
                 {options && (
                   <motion.div
@@ -347,33 +596,65 @@ function App() {
                     transition={{ delay: 0.1 }}
                     className="glass rounded-2xl p-8"
                   >
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-6">
                       <div className="flex items-center space-x-2">
                         <Layers className="w-5 h-5 text-purple-400" />
                         <h2 className="text-xl font-semibold">Transformation Lens</h2>
                       </div>
-                      <button
-                        onClick={handleTransform}
-                        disabled={isProcessing || !narrative.trim()}
-                        className={cn(
-                          "px-8 py-3 rounded-lg font-medium transition-all",
-                          "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white",
-                          "disabled:opacity-50 disabled:cursor-not-allowed",
-                          "flex items-center space-x-2 shadow-lg"
+                      <div className="flex items-center space-x-3">
+                        {useBalancedTransformation && (
+                          <button
+                            onClick={analyzeBalance}
+                            disabled={isAnalyzingBalance || !narrative.trim()}
+                            className={cn(
+                              "px-4 py-2 rounded-lg font-medium transition-all",
+                              "bg-blue-600 hover:bg-blue-700 text-white",
+                              "disabled:opacity-50 disabled:cursor-not-allowed",
+                              "flex items-center space-x-2"
+                            )}
+                          >
+                            {isAnalyzingBalance ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Analyzing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Target className="w-4 h-4" />
+                                <span>Analyze Balance</span>
+                              </>
+                            )}
+                          </button>
                         )}
-                      >
-                        {isProcessing ? (
-                          <>
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            <span>Processing 5-Step Pipeline...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-5 h-5" />
-                            <span>Start Advanced Transformation</span>
-                          </>
-                        )}
-                      </button>
+                        <button
+                          onClick={handleTransform}
+                          disabled={isProcessing || !narrative.trim()}
+                          className={cn(
+                            "px-8 py-3 rounded-lg font-medium transition-all",
+                            useBalancedTransformation 
+                              ? "bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700"
+                              : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700",
+                            "text-white disabled:opacity-50 disabled:cursor-not-allowed",
+                            "flex items-center space-x-2 shadow-lg"
+                          )}
+                        >
+                          {isProcessing ? (
+                            <>
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              <span>
+                                {useBalancedTransformation ? 'Processing Balanced Pipeline...' : 'Processing 5-Step Pipeline...'}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {useBalancedTransformation ? <Cpu className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                              <span>
+                                {useBalancedTransformation ? 'Start Balanced Transformation' : 'Start Advanced Transformation'}
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <TransformationControls
                       options={options}
@@ -384,6 +665,104 @@ function App() {
                       onNamespaceChange={setSelectedNamespace}
                       onStyleChange={setSelectedStyle}
                     />
+                  </motion.div>
+                )}
+
+                {/* Balance Analysis Results */}
+                {balanceAnalysis && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className="glass rounded-2xl p-6"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                        <Target className="w-5 h-5 text-blue-400" />
+                        <span>Balance Analysis</span>
+                      </h3>
+                      <div className={`flex items-center space-x-2 ${getBalanceStatusColor(balanceAnalysis.is_balanced, balanceAnalysis.template_risk_score)}`}>
+                        {getBalanceStatusIcon(balanceAnalysis.is_balanced, balanceAnalysis.template_risk_score)}
+                        <span className="font-medium">
+                          {getBalanceStatusText(balanceAnalysis.is_balanced, balanceAnalysis.template_risk_score)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-black/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">Template Risk</span>
+                          <span className={`font-mono text-sm ${balanceAnalysis.template_risk_score > 0.7 ? 'text-red-400' : balanceAnalysis.template_risk_score > 0.4 ? 'text-yellow-400' : 'text-green-400'}`}>
+                            {(balanceAnalysis.template_risk_score * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                          <div 
+                            className={`h-2 rounded-full ${balanceAnalysis.template_risk_score > 0.7 ? 'bg-red-500' : balanceAnalysis.template_risk_score > 0.4 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                            style={{ width: `${balanceAnalysis.template_risk_score * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-black/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">Preservation Score</span>
+                          <span className={`font-mono text-sm ${balanceAnalysis.preservation_score > 0.7 ? 'text-green-400' : balanceAnalysis.preservation_score > 0.4 ? 'text-yellow-400' : 'text-red-400'}`}>
+                            {(balanceAnalysis.preservation_score * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                          <div 
+                            className={`h-2 rounded-full ${balanceAnalysis.preservation_score > 0.7 ? 'bg-green-500' : balanceAnalysis.preservation_score > 0.4 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                            style={{ width: `${balanceAnalysis.preservation_score * 100}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-black/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">Conflicts</span>
+                          <span className={`font-mono text-sm ${balanceAnalysis.conflicts.length === 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {balanceAnalysis.conflicts.length}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {balanceAnalysis.conflicts.length > 0 ? balanceAnalysis.conflicts.join(', ') : 'None detected'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Issues and Suggestions */}
+                    {(balanceAnalysis.dominant_attributes.length > 0 || balanceAnalysis.suggestions.length > 0) && (
+                      <div className="space-y-3">
+                        {balanceAnalysis.dominant_attributes.length > 0 && (
+                          <div className="bg-orange-900/20 border border-orange-500/30 rounded-lg p-3">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <AlertTriangle className="w-4 h-4 text-orange-400" />
+                              <span className="font-medium text-orange-300 text-sm">Dominant Attributes</span>
+                            </div>
+                            <p className="text-orange-200 text-xs">
+                              {balanceAnalysis.dominant_attributes.join(', ')} may overpower the transformation
+                            </p>
+                          </div>
+                        )}
+
+                        {balanceAnalysis.suggestions.length > 0 && (
+                          <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <Info className="w-4 h-4 text-blue-400" />
+                              <span className="font-medium text-blue-300 text-sm">Suggestions</span>
+                            </div>
+                            <ul className="text-blue-200 text-xs space-y-1">
+                              {balanceAnalysis.suggestions.map((suggestion, index) => (
+                                <li key={index}>• {suggestion}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </motion.div>
                 )}
 
@@ -578,6 +957,47 @@ function App() {
                   narrative={narrative}
                   isActive={true}
                 />
+              </motion.div>
+            )}
+
+            {activeTab === "archive" && (
+              <motion.div
+                key="archive"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <ErrorBoundary>
+                  <ArchiveExplorer 
+                    onNavigateToConversation={navigateToConversationBrowser}
+                  />
+                </ErrorBoundary>
+              </motion.div>
+            )}
+
+            {activeTab === "transformations" && (
+              <motion.div
+                key="transformations"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <ErrorBoundary>
+                  <TransformationManager />
+                </ErrorBoundary>
+              </motion.div>
+            )}
+
+            {activeTab === "writebook" && (
+              <motion.div
+                key="writebook"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <ErrorBoundary>
+                  <WritebookEditor />
+                </ErrorBoundary>
               </motion.div>
             )}
 

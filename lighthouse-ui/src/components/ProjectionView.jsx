@@ -4,6 +4,54 @@ import { Wand2, Copy, Check, Shield } from 'lucide-react'
 import { cn } from '../utils'
 
 const ProjectionView = ({ projection, onCopy, copied }) => {
+  // Helper function to render complex values
+  const renderValue = (value) => {
+    if (value === null || value === undefined) {
+      return 'N/A';
+    }
+    
+    if (typeof value === 'object') {
+      // Special handling for common object types from balanced transformation
+      if (value.hasOwnProperty('is_balanced')) {
+        return (
+          <div className="text-xs space-y-1">
+            <div>Balanced: {value.is_balanced ? 'Yes' : 'No'}</div>
+            <div>Risk: {(value.template_risk_score * 100).toFixed(1)}%</div>
+            <div>Preservation: {(value.preservation_score * 100).toFixed(1)}%</div>
+          </div>
+        );
+      }
+      
+      if (value.hasOwnProperty('total_transformations')) {
+        return (
+          <div className="text-xs space-y-1">
+            <div>Total: {value.total_transformations}</div>
+            <div>Avoided: {value.templates_avoided}</div>
+            <div>Avg: {(value.avg_preservation_score * 100).toFixed(1)}%</div>
+          </div>
+        );
+      }
+      
+      // For arrays, show as comma-separated
+      if (Array.isArray(value)) {
+        return value.length > 0 ? value.join(', ') : 'None';
+      }
+      
+      // For other objects, show as formatted JSON
+      return (
+        <pre className="text-xs whitespace-pre-wrap break-words">
+          {JSON.stringify(value, null, 2)}
+        </pre>
+      );
+    }
+    
+    // For numbers, format appropriately
+    if (typeof value === 'number') {
+      return value < 1 ? (value * 100).toFixed(1) + '%' : value.toString();
+    }
+    
+    return String(value);
+  };
   return (
     <motion.div className="glass rounded-2xl p-8">
       <div className="flex items-center justify-between mb-6">
@@ -50,7 +98,9 @@ const ProjectionView = ({ projection, onCopy, copied }) => {
                 <p className="text-xs text-muted-foreground capitalize mb-1">
                   {key.replace('_', ' ')}
                 </p>
-                <p className="text-sm font-medium">{value}</p>
+                <div className="text-sm font-medium">
+                  {renderValue(value)}
+                </div>
               </div>
             )
           })}
@@ -63,7 +113,9 @@ const ProjectionView = ({ projection, onCopy, copied }) => {
             <div className="grid grid-cols-3 gap-4 text-center">
               {Object.entries(projection.diff_summary).map(([key, value]) => (
                 <div key={key}>
-                  <p className="text-2xl font-bold text-purple-400">{value}</p>
+                  <div className="text-2xl font-bold text-purple-400">
+                    {renderValue(value)}
+                  </div>
                   <p className="text-xs text-muted-foreground capitalize">
                     {key.replace('_', ' ')}
                   </p>

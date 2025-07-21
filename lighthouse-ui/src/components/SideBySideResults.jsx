@@ -13,9 +13,11 @@ import {
   Save,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Archive
 } from 'lucide-react';
 import { cn } from '../utils';
+import { saveTransformationToManager } from './TransformationManager';
 
 const SideBySideResults = ({ 
   originalText, 
@@ -30,6 +32,7 @@ const SideBySideResults = ({
   const [editableTransformed, setEditableTransformed] = useState(transformedText);
   const [isEditing, setIsEditing] = useState(false);
   const [editingCopied, setEditingCopied] = useState(false);
+  const [savedToManager, setSavedToManager] = useState(false);
 
   // Font size controls
   const increaseFontSize = () => setFontSize(prev => Math.min(prev + 2, 24));
@@ -49,6 +52,34 @@ const SideBySideResults = ({
     navigator.clipboard.writeText(editableTransformed);
     setEditingCopied(true);
     setTimeout(() => setEditingCopied(false), 2000);
+  };
+
+  // Save transformation to manager
+  const handleSaveToManager = () => {
+    try {
+      const transformationData = {
+        name: `Transformation ${new Date().toLocaleTimeString()}`,
+        original_text: originalText,
+        transformed_text: editableTransformed,
+        persona: metadata.target_persona || '',
+        namespace: metadata.target_namespace || '',
+        style: metadata.target_style || '',
+        metadata: metadata,
+        type: metadata.balancing_analysis ? 'balanced' : 'standard',
+        preservation_score: metadata.preservation_score || metadata.balancing_analysis?.preservation_score || 0,
+        balance_analysis: metadata.balancing_analysis || null,
+        performance_metrics: metadata.performance_metrics || null
+      };
+      
+      const savedId = saveTransformationToManager(transformationData);
+      
+      if (savedId) {
+        setSavedToManager(true);
+        setTimeout(() => setSavedToManager(false), 3000);
+      }
+    } catch (error) {
+      console.error('Failed to save transformation:', error);
+    }
   };
 
   // Get readable metadata for display
@@ -102,6 +133,30 @@ const SideBySideResults = ({
         </div>
         
         <div className="flex items-center gap-2">
+          {/* Save Transformation button */}
+          <button
+            onClick={handleSaveToManager}
+            className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-lg font-medium transition-all text-sm",
+              savedToManager 
+                ? "bg-green-600 text-white" 
+                : "bg-purple-600 hover:bg-purple-700 text-white"
+            )}
+            title="Save transformation to manager"
+          >
+            {savedToManager ? (
+              <>
+                <Check className="w-4 h-4" />
+                <span>Saved!</span>
+              </>
+            ) : (
+              <>
+                <Archive className="w-4 h-4" />
+                <span>Save</span>
+              </>
+            )}
+          </button>
+          
           {/* Font size controls */}
           <div className="flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-lg">
             <button

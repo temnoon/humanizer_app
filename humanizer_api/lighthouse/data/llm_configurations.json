@@ -70,8 +70,8 @@
     "system_prompt_override": ""
   },
   "vision": {
-    "provider": "openai",
-    "model": "gpt-4o",
+    "provider": "ollama",
+    "model": "gemma3:12b",
     "temperature": 0.5,
     "max_tokens": 1500,
     "top_p": 0.9,

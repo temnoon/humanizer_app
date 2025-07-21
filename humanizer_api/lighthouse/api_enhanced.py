@@ -48,6 +48,8 @@ logger = logging.getLogger(__name__)
 from vision_endpoints import vision_router
 from advanced_attribute_api import advanced_attr_router
 from linguistic_api_endpoints import linguistic_router
+from context_aware_splitter import ContextAwareSplitter, process_large_narrative
+from balanced_transformation_api import balanced_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -77,6 +79,7 @@ app.add_middleware(
 app.include_router(vision_router)
 app.include_router(advanced_attr_router)
 app.include_router(linguistic_router)
+app.include_router(balanced_router)
 
 # Initialize LPE components
 projection_engine = ProjectionEngine()
@@ -2373,6 +2376,98 @@ async def cleanup_old_sessions():
         for session_id in to_remove:
             del maieutic_sessions[session_id]
             logger.info(f"Cleaned up old session: {session_id}")
+
+
+@app.post("/transform-large", summary="Large Narrative Transformation with Context-Aware Splitting")
+async def transform_large_narrative(request: TransformationRequest):
+    """
+    Transform large narratives using context-aware splitting and parallel processing.
+    
+    Automatically splits large inputs to avoid context length limits, processes chunks
+    in parallel through the 5-stage LPE pipeline, and intelligently recombines results.
+    
+    Features:
+    - Token-aware splitting with semantic boundary preservation
+    - Parallel chunk processing for faster completion
+    - Intelligent result recombination with coherence analysis
+    - Context overlap to maintain narrative flow
+    """
+    try:
+        transform_id = str(uuid.uuid4())
+        logger.info(f"Starting large narrative transformation {transform_id}")
+        
+        # Check if context-aware splitting is needed
+        splitter = ContextAwareSplitter(max_tokens_per_chunk=3000, model_type="general")
+        
+        if not splitter.should_split(request.narrative):
+            # Single chunk - use regular transform
+            logger.info(f"Text length acceptable for regular processing")
+            return await transform_narrative(request)
+        
+        # Send initial progress update
+        await send_progress_update(transform_id, "analyzing", "started", {
+            "text_length": len(request.narrative),
+            "estimated_tokens": splitter.estimate_tokens(request.narrative),
+            "max_safe_tokens": splitter.get_max_safe_tokens(),
+            "splitting_required": True
+        })
+        
+        # Process using context-aware splitting
+        result = await process_large_narrative(
+            content=request.narrative,
+            persona=request.target_persona,
+            namespace=request.target_namespace,
+            style=request.target_style,
+            narrative_id=transform_id,
+            max_parallel=2  # Conservative parallel processing
+        )
+        
+        # Send final progress update
+        await send_progress_update(transform_id, "complete", "finished", {
+            "chunks_processed": result.get("chunk_count", 0),
+            "success_rate": result.get("success_rate", 0.0),
+            "coherence_score": result.get("coherence_analysis", {}).get("coherence_score", 0.0)
+        })
+        
+        # Format response to match existing TransformationResponse structure
+        steps = []
+        if result.get("processing_metadata"):
+            for i, chunk_result in enumerate(result["processing_metadata"]):
+                if chunk_result.get("success", False):
+                    chunk_steps = chunk_result.get("processing_steps", [])
+                    for step in chunk_steps:
+                        step_name = f"Chunk {i+1}: {step.get('name', 'Unknown')}"
+                        steps.append(TransformationStep(
+                            name=step_name,
+                            input_snapshot=step.get('input', '')[:200] + "..." if len(step.get('input', '')) > 200 else step.get('input', ''),
+                            output_snapshot=step.get('output', '')[:200] + "..." if len(step.get('output', '')) > 200 else step.get('output', ''),
+                            duration_ms=step.get('duration_ms', 0),
+                            metadata=step.get('metadata', {})
+                        ))
+        
+        return TransformationResponse(
+            transform_id=transform_id,
+            original_narrative=request.narrative,
+            transformed_narrative=result.get("final_narrative", ""),
+            target_persona=request.target_persona,
+            target_namespace=request.target_namespace,
+            target_style=request.target_style,
+            processing_time_ms=int(sum(step.duration_ms for step in steps)),
+            steps=steps if request.show_steps else [],
+            metadata={
+                "splitting_metadata": result.get("splitting_metadata", {}),
+                "coherence_analysis": result.get("coherence_analysis", {}),
+                "chunk_count": result.get("chunk_count", 0),
+                "success_rate": result.get("success_rate", 0.0),
+                "large_narrative_processing": True
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Large narrative transformation failed: {str(e)}")
+        await send_progress_update(transform_id, "error", "failed", {"error": str(e)})
+        raise HTTPException(status_code=500, detail=f"Transformation failed: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn

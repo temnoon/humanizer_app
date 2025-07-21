@@ -30,10 +30,11 @@ import {
   CheckSquare,
   Cpu,
   Play,
-  GitBranch
+  GitBranch,
+  BookOpen
 } from "lucide-react";
 
-const ConversationBrowser = ({ initialConversationId = null, initialMessageId = null }) => {
+const ConversationBrowser = ({ initialConversationId = null, initialMessageId = null, onNavigateToConversation = null, onNavigateToWritebook = null }) => {
   // Main state
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
@@ -70,6 +71,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
   const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0 });
   const [selectedMessages, setSelectedMessages] = useState([]);
   const [expandedMessages, setExpandedMessages] = useState(new Set());
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const [queueSettings, setQueueSettings] = useState({
     transformationType: "humanize",
@@ -134,19 +136,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
             // If there's an initial message ID, scroll to it and highlight it
             if (initialMessageId) {
               setTimeout(() => {
-                const messageElement = document.getElementById(`message-${initialMessageId}`);
-                if (messageElement) {
-                  messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  messageElement.style.boxShadow = '0 0 20px rgba(168, 85, 247, 0.5)';
-                  messageElement.style.border = '2px solid rgba(168, 85, 247, 0.8)';
-                  messageElement.style.transition = 'all 0.3s ease';
-                  
-                  // Remove highlight after 3 seconds
-                  setTimeout(() => {
-                    messageElement.style.boxShadow = '';
-                    messageElement.style.border = '';
-                  }, 3000);
-                }
+                scrollToAndHighlightMessage(initialMessageId, 'start');
               }, 500);
             }
           }
@@ -383,6 +373,48 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
     }
   };
 
+  const exportToWritebook = () => {
+    if (!selectedConversation || conversationMessages.length === 0) return;
+
+    // Convert conversation messages to writebook pages
+    const pages = conversationMessages.map((message, index) => ({
+      id: message.id || `msg_${index}`,
+      type: 'page',
+      content: message.body_text || '',
+      author: message.role || message.author || 'Unknown',
+      timestamp: message.timestamp,
+      original_message_id: message.id
+    }));
+
+    // Create writebook export data
+    const writebookData = {
+      title: selectedConversation.title || 'Exported Conversation',
+      pages: pages,
+      metadata: {
+        conversation_id: selectedConversation.id,
+        participant_count: new Set(conversationMessages.map(msg => msg.role || msg.author)).size,
+        date_range: [
+          conversationMessages[0]?.timestamp || '',
+          conversationMessages[conversationMessages.length - 1]?.timestamp || ''
+        ],
+        total_messages: conversationMessages.length,
+        total_words: conversationMessages.reduce((sum, msg) => sum + (msg.word_count || 0), 0),
+        exported_at: new Date().toISOString()
+      }
+    };
+
+    // Store the export data temporarily
+    localStorage.setItem('writebookExportData', JSON.stringify(writebookData));
+    
+    // Navigate to the writebook editor
+    if (onNavigateToWritebook) {
+      onNavigateToWritebook();
+    } else {
+      // Fallback - try direct navigation
+      console.warn('No navigation callback provided for writebook export');
+    }
+  };
+
   const toggleMessageSelection = (messageId) => {
     setSelectedMessages(prev => 
       prev.includes(messageId) 
@@ -401,6 +433,70 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
       }
       return newSet;
     });
+  };
+
+  // Handle clicking on a message to navigate to its conversation
+  const handleMessageClick = (message, event) => {
+    // Check if ctrl/cmd key is pressed for new tab
+    if (event.ctrlKey || event.metaKey) {
+      // Open in new tab by creating a URL
+      const conversationUrl = `${window.location.origin}${window.location.pathname}?conversation=${message.conversation_id}&message=${message.id}`;
+      window.open(conversationUrl, '_blank');
+    } else {
+      // Navigate within the same tab
+      if (onNavigateToConversation) {
+        onNavigateToConversation(message.conversation_id, message.id);
+      } else {
+        // Fallback: just load the conversation in current view
+        setSelectedConversation({ id: message.conversation_id });
+        loadConversationMessages(message.conversation_id);
+        setCurrentView("conversation");
+      }
+    }
+  };
+
+  // Enhanced function to scroll to and highlight a specific message
+  const scrollToAndHighlightMessage = (messageId, scrollPosition = 'center') => {
+    const messageElement = document.getElementById(`message-${messageId}`);
+    if (messageElement) {
+      // Set the highlighted message state
+      setHighlightedMessageId(messageId);
+      
+      // Scroll to message with proper positioning
+      messageElement.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: scrollPosition, // 'center', 'start', 'end', 'nearest'
+        inline: 'nearest'
+      });
+      
+      // Focus on the message content to enable cursor placement
+      const messageContent = messageElement.querySelector('.message-content');
+      if (messageContent) {
+        // Make content focusable and focus it
+        messageContent.setAttribute('tabindex', '0');
+        setTimeout(() => {
+          messageContent.focus();
+          
+          // Try to select all text content if it exists
+          const range = document.createRange();
+          const selection = window.getSelection();
+          
+          try {
+            range.selectNodeContents(messageContent);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } catch (e) {
+            // Fallback: just focus without selection
+            console.log('Text selection not available');
+          }
+        }, 300);
+      }
+      
+      // Remove highlighting after 5 seconds
+      setTimeout(() => {
+        setHighlightedMessageId(null);
+      }, 5000);
+    }
   };
 
   // No longer need client-side filtering since we're doing server-side search
@@ -802,6 +898,13 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
             <Copy className="w-4 h-4 inline mr-2" />
             Copy All
           </button>
+          <button
+            onClick={exportToWritebook}
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+          >
+            <BookOpen className="w-4 h-4 inline mr-2" />
+            Export to Writebook
+          </button>
         </div>
       </div>
 
@@ -855,6 +958,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
         {conversationMessages.map((message, index) => {
           const isExpanded = expandedMessages.has(message.id);
           const isSelected = selectedMessages.includes(message.id);
+          const isHighlighted = highlightedMessageId === message.id;
           const messageText = message.body_text || "";
           const previewText = messageText.length > 300 ? messageText.substring(0, 300) + "..." : messageText;
           
@@ -865,12 +969,14 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.02 }}
-              className={`p-4 rounded-lg border transition-all duration-200 ${
-                isSelected 
-                  ? "bg-green-600/20 border-green-400 shadow-lg" 
-                  : message.author === "user" 
-                    ? "bg-purple-600/20 border-purple-400/30 hover:bg-purple-600/30" 
-                    : "bg-blue-600/20 border-blue-400/30 hover:bg-blue-600/30"
+              className={`p-4 rounded-lg border transition-all duration-500 ${
+                isHighlighted
+                  ? "bg-yellow-500/30 border-yellow-400 shadow-xl ring-2 ring-yellow-400/50"
+                  : isSelected 
+                    ? "bg-green-600/20 border-green-400 shadow-lg" 
+                    : message.author === "user" 
+                      ? "bg-purple-600/20 border-purple-400/30 hover:bg-purple-600/30" 
+                      : "bg-blue-600/20 border-blue-400/30 hover:bg-blue-600/30"
               }`}
             >
               <div className="flex items-start justify-between mb-3">
@@ -924,12 +1030,23 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
                 </div>
               </div>
               
-              <MarkdownRenderer 
-                content={isExpanded ? messageText : previewText}
-                className="text-sm text-gray-100 leading-relaxed"
-                enableTables={true}
-                enableCodeHighlighting={true}
-              />
+              <div 
+                onClick={(e) => handleMessageClick(message, e)}
+                className="cursor-pointer hover:bg-white/5 rounded p-2 -m-2 transition-colors group"
+                title="Click to open conversation (Ctrl/Cmd+Click for new tab)"
+              >
+                <div className="message-content">
+                  <MarkdownRenderer 
+                    content={isExpanded ? messageText : previewText}
+                    className="text-sm text-gray-100 leading-relaxed group-hover:text-white transition-colors"
+                    enableTables={true}
+                    enableCodeHighlighting={true}
+                  />
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity text-xs text-gray-400 mt-2">
+                  💡 Click to open conversation • Ctrl/Cmd+Click for new tab
+                </div>
+              </div>
               
               {isSelected && (
                 <div className="mt-3 pt-3 border-t border-green-400/20">

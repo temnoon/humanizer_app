@@ -5,12 +5,16 @@ Consolidates all archive sources into a single searchable database
 
 import os
 import json
+import logging
 import asyncio
 from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Union
 from pathlib import Path
 from dataclasses import dataclass, field
 from enum import Enum
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 import asyncpg
 import numpy as np
@@ -19,6 +23,7 @@ from sqlalchemy import create_engine, text, MetaData, Table, Column, BigInteger,
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from pgvector.sqlalchemy import Vector
 
 Base = declarative_base()
 
@@ -65,8 +70,8 @@ class ArchiveContentORM(Base):
     timestamp = Column(DateTime(timezone=True), nullable=True, index=True)
     source_metadata = Column(JSONB, nullable=True)
     
-    # AI Processing Results
-    semantic_vector = Column(String, nullable=True)  # Store as JSON string for now
+    # AI Processing Results - Using pgvector for 768-dimensional nomic embeddings
+    semantic_vector = Column(Vector(768), nullable=True)  # pgvector for efficient similarity search
     extracted_attributes = Column(JSONB, nullable=True)
     content_quality_score = Column(Float, nullable=True)
     processing_status = Column(String(50), default="pending")
@@ -151,7 +156,7 @@ class UnifiedArchiveDB:
             try:
                 conn.execute(text("""
                     CREATE INDEX IF NOT EXISTS idx_archived_content_vector 
-                    ON archived_content USING ivfflat (semantic_vector::vector(768))
+                    ON archived_content USING ivfflat (semantic_vector vector_cosine_ops)
                 """))
             except Exception:
                 # Vector extension not available
@@ -175,7 +180,7 @@ class UnifiedArchiveDB:
                 participants=content.participants,
                 timestamp=content.timestamp,
                 source_metadata=content.source_metadata,
-                semantic_vector=json.dumps(content.semantic_vector) if content.semantic_vector else None,
+                semantic_vector=content.semantic_vector,
                 extracted_attributes=content.extracted_attributes,
                 content_quality_score=content.content_quality_score,
                 processing_status=content.processing_status,
@@ -328,7 +333,7 @@ class UnifiedArchiveDB:
             participants=orm_obj.participants or [],
             timestamp=orm_obj.timestamp,
             source_metadata=orm_obj.source_metadata or {},
-            semantic_vector=json.loads(orm_obj.semantic_vector) if orm_obj.semantic_vector else None,
+            semantic_vector=list(orm_obj.semantic_vector) if orm_obj.semantic_vector else None,
             extracted_attributes=orm_obj.extracted_attributes or {},
             content_quality_score=orm_obj.content_quality_score,
             processing_status=orm_obj.processing_status,
@@ -340,6 +345,18 @@ class UnifiedArchiveDB:
             created_at=orm_obj.created_at,
             updated_at=orm_obj.updated_at
         )
+    
+    def get_content_by_id(self, content_id: int) -> Optional[ArchiveContent]:
+        """Get specific content by ID"""
+        try:
+            with self.SessionLocal() as session:
+                orm_obj = session.get(ArchiveContentORM, content_id)
+                if orm_obj:
+                    return self._orm_to_dataclass(orm_obj)
+                return None
+        except Exception as e:
+            logger.error(f"Error getting content by ID {content_id}: {e}")
+            return None
 
 # SQL for manual table creation if needed
 CREATE_TABLE_SQL = """
@@ -356,7 +373,7 @@ CREATE TABLE IF NOT EXISTS archived_content (
     participants TEXT[],
     timestamp TIMESTAMPTZ,
     source_metadata JSONB,
-    semantic_vector TEXT,  -- JSON string for now
+    semantic_vector vector(768),  -- pgvector for nomic-text-embed
     extracted_attributes JSONB,
     content_quality_score FLOAT,
     processing_status VARCHAR(50) DEFAULT 'pending',
