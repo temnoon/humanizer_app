@@ -87,16 +87,29 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
     loadConversations(searchQuery);
   }, [pagination.page]);
   
-  // Search function with debouncing
-  useEffect(() => {
-    const searchTimer = setTimeout(() => {
-      // Reset to page 1 when searching
-      setPagination(prev => ({ ...prev, page: 1 }));
-      loadConversations(searchQuery);
-    }, 500); // 500ms debounce
-    
-    return () => clearTimeout(searchTimer);
-  }, [searchQuery]);
+  // Search state for manual control
+  const [searchInput, setSearchInput] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  
+  // Manual search function
+  const handleSearch = () => {
+    setSearchQuery(searchInput);
+    setPagination(prev => ({ ...prev, page: 1 }));
+    setIsSearching(true);
+    loadConversations(searchInput).finally(() => setIsSearching(false));
+  };
+  
+  // Handle search input key events
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSearch();
+    }
+    // Don't trigger search on spacebar
+    if (e.key === ' ') {
+      e.stopPropagation();
+    }
+  };
 
   // Reload when sorting changes
   useEffect(() => {
@@ -386,8 +399,10 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
       original_message_id: message.id
     }));
 
-    // Create writebook export data
+    // Create writebook export data with unique ID
+    const writebookId = `writebook_${selectedConversation.id}_${Date.now()}`;
     const writebookData = {
+      id: writebookId,
       title: selectedConversation.title || 'Exported Conversation',
       pages: pages,
       metadata: {
@@ -399,7 +414,8 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
         ],
         total_messages: conversationMessages.length,
         total_words: conversationMessages.reduce((sum, msg) => sum + (msg.word_count || 0), 0),
-        exported_at: new Date().toISOString()
+        exported_at: new Date().toISOString(),
+        created_at: new Date().toISOString()
       }
     };
 
@@ -504,57 +520,96 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
 
   const renderConversationList = () => (
     <div className="space-y-4">
-      {/* Search and Controls */}
-      <div className="flex items-center space-x-4 mb-6">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+      {/* Search Box - Full Width Above Controls */}
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
           <input
             type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={`Search all ${pagination.total || 1923} conversations...`}
-            className="w-full pl-10 pr-4 py-2 bg-black/20 border border-white/10 rounded-lg focus:border-purple-400 focus:outline-none"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder={`Search conversations... (${pagination.total || 1923} total) - Press Enter to search`}
+            className="w-full pl-12 pr-24 py-4 text-lg bg-black/20 border border-white/10 rounded-xl focus:border-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-400/20 transition-all"
           />
+          <button
+            onClick={handleSearch}
+            disabled={isSearching}
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2"
+          >
+            {isSearching ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Search className="w-4 h-4" />
+            )}
+            Search
+          </button>
+        </div>
+        {searchQuery && (
+          <div className="mt-2 flex items-center justify-between text-sm text-gray-400">
+            <span>Searching for: "{searchQuery}"</span>
+            <button
+              onClick={() => {
+                setSearchQuery("");
+                setSearchInput("");
+                loadConversations("");
+              }}
+              className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
+            >
+              <X className="w-3 h-3" />
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+      
+      {/* Controls Row */}
+      <div className="flex items-center justify-between mb-6">
+        {/* Left: Sort Controls */}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">Sort by:</span>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-3 py-2 bg-black/20 border border-white/10 rounded-lg focus:border-purple-400 focus:outline-none"
+          >
+            <option value="timestamp">Date Created</option>
+            <option value="title">Title</option>
+            <option value="word_count">Word Count</option>
+            <option value="message_count">Message Count</option>
+          </select>
+          
+          <button
+            onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+            className="p-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
+            title={`Sort ${sortOrder === "asc" ? "Descending" : "Ascending"}`}
+          >
+            {sortOrder === "asc" ? <ChevronDown className="w-4 h-4" /> : <ChevronDown className="w-4 h-4 transform rotate-180" />}
+          </button>
         </div>
         
-        {/* Sort Controls */}
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="px-3 py-2 bg-black/20 border border-white/10 rounded-lg focus:border-purple-400 focus:outline-none"
-        >
-          <option value="timestamp">Date Created</option>
-          <option value="title">Title</option>
-          <option value="word_count">Word Count</option>
-          <option value="message_count">Message Count</option>
-        </select>
-        
-        <button
-          onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
-          className="p-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors"
-          title={`Sort ${sortOrder === "asc" ? "Descending" : "Ascending"}`}
-        >
-          {sortOrder === "asc" ? <ChevronDown className="w-4 h-4" /> : <ChevronDown className="w-4 h-4 transform rotate-180" />}
-        </button>
-        
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`p-2 rounded-lg transition-colors ${showFilters ? 'bg-purple-600' : 'bg-gray-600 hover:bg-gray-700'}`}
-          title="Filters"
-        >
-          <Filter className="w-4 h-4" />
-        </button>
-        
-        <button
-          onClick={() => loadConversations(searchQuery)}
-          className="p-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-        
-        <button
-          onClick={() => generateEmbeddings(null, 10, 100)}
-          disabled={isGeneratingEmbeddings}
+        {/* Right: Action Controls */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm ${showFilters ? 'bg-purple-600 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'}`}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+          </button>
+          
+          <button
+            onClick={() => loadConversations(searchQuery)}
+            className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors text-white text-sm"
+            title="Refresh conversations"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+          
+          <button
+            onClick={() => generateEmbeddings(null, 10, 100)}
+            disabled={isGeneratingEmbeddings}
           className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
             isGeneratingEmbeddings 
               ? 'bg-gray-600 cursor-not-allowed' 
@@ -569,7 +624,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
           )}
           <span>
             {isGeneratingEmbeddings ? 'Generating...' : 'Embeddings'}
-            {embeddingsStats && ` (${embeddingsStats.total_with_embeddings || 0})`}
+            {embeddingsStats && ` (${embeddingsStats.total_embeddings || 0})`}
           </span>
         </button>
         
@@ -593,13 +648,14 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
           </span>
         </button>
         
-        <button
-          onClick={() => setCurrentView("queue")}
-          className="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-        >
-          <Zap className="w-4 h-4" />
-          <span>Queue ({transformationQueue.filter(item => item.status === "pending").length})</span>
-        </button>
+          <button
+            onClick={() => setCurrentView("queue")}
+            className="flex items-center space-x-2 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors text-white text-sm"
+          >
+            <Zap className="w-4 h-4" />
+            <span>Queue ({transformationQueue.filter(item => item.status === "pending").length})</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters Panel */}

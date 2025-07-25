@@ -53,6 +53,10 @@ import BatchProcessor from "./components/BatchProcessor";
 import ArchiveExplorer from "./components/ArchiveExplorer";
 import TransformationManager from "./components/TransformationManager";
 import WritebookEditor from "./components/WritebookEditor";
+import WritebookManager from "./components/WritebookManager";
+import WritebookPageEditor from "./components/WritebookPageEditor";
+import SemanticTomography from "./components/SemanticTomography";
+import IntelligentAttributeEditor from "./components/IntelligentAttributeEditor";
 import { AttributeProvider } from "./contexts/AttributeContext";
 
 function App() {
@@ -64,9 +68,15 @@ function App() {
   const [transformationSteps, setTransformationSteps] = useState([]);
   const [totalDuration, setTotalDuration] = useState(0);
   const [options, setOptions] = useState(null);
-  const [selectedPersona, setSelectedPersona] = useState("philosopher");
-  const [selectedNamespace, setSelectedNamespace] = useState("lamish-galaxy");
-  const [selectedStyle, setSelectedStyle] = useState("poetic");
+  const [selectedPersona, setSelectedPersona] = useState(
+    localStorage.getItem('lastSelectedPersona') || "philosopher"
+  );
+  const [selectedNamespace, setSelectedNamespace] = useState(
+    localStorage.getItem('lastSelectedNamespace') || "lamish-galaxy"
+  );
+  const [selectedStyle, setSelectedStyle] = useState(
+    localStorage.getItem('lastSelectedStyle') || "poetic"
+  );
   const [error, setError] = useState(null);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState("simple");
@@ -77,6 +87,8 @@ function App() {
     initialConversationId: null,
     initialMessageId: null
   });
+  const [writebookView, setWritebookView] = useState('manager'); // 'manager', 'editor', or 'page-editor'
+  const [editingPageId, setEditingPageId] = useState(null);
 
   // Handle URL parameters for direct conversation links
   useEffect(() => {
@@ -91,11 +103,16 @@ function App() {
     }
   }, []);
   
-  // Balanced transformation state
+  // Balanced transformation state - FORCED TO BALANCED MODE
   const [balanceAnalysis, setBalanceAnalysis] = useState(null);
   const [isAnalyzingBalance, setIsAnalyzingBalance] = useState(false);
   const [balancedResult, setBalancedResult] = useState(null);
-  const [useBalancedTransformation, setUseBalancedTransformation] = useState(true);
+  const [useBalancedTransformation, setUseBalancedTransformation] = useState(true); // Always balanced
+  
+  // Quantum narrative theory state
+  const [semanticTomography, setSemanticTomography] = useState(null);
+  const [isAnalyzingSemantics, setIsAnalyzingSemantics] = useState(false);
+  const [showQuantumAnalysis, setShowQuantumAnalysis] = useState(true); // Show by default
 
   // Navigation helper for switching to conversation browser with specific parameters
   const navigateToConversationBrowser = (conversationId, messageId = null) => {
@@ -117,6 +134,29 @@ function App() {
   // Navigation helper for switching to writebook editor
   const navigateToWritebook = () => {
     setActiveTab("writebook");
+    setWritebookView('editor');
+  };
+
+  // Navigation helper for switching to writebook manager
+  const navigateToWritebookManager = () => {
+    setActiveTab("writebook");
+    setWritebookView('manager');
+    setEditingPageId(null);
+  };
+
+  // Navigation helper for switching to full-page editor
+  const navigateToPageEditor = (pageId, writebookData, pages) => {
+    setActiveTab("writebook");
+    setWritebookView('page-editor');
+    setEditingPageId(pageId);
+    
+    // Store the current writebook data for the page editor
+    const editorData = {
+      writebookData,
+      pages,
+      editingPageId: pageId
+    };
+    localStorage.setItem('writebook_editor_data', JSON.stringify(editorData));
   };
 
   // Load transformation options and models on mount
@@ -178,6 +218,41 @@ function App() {
       setError(err.message);
     } finally {
       setIsAnalyzingBalance(false);
+    }
+  };
+
+  const analyzeSemanticTomography = async () => {
+    if (!narrative.trim()) return;
+
+    setIsAnalyzingSemantics(true);
+    setError(null);
+
+    try {
+      const response = await fetch("http://127.0.0.1:8100/api/narrative-theory/semantic-tomography", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: narrative,
+          transformation_attributes: {
+            persona: selectedPersona,
+            namespace: selectedNamespace,
+            style: selectedStyle
+          },
+          reading_style: "interpretation"
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Semantic tomography analysis failed");
+      }
+
+      const data = await response.json();
+      setSemanticTomography(data);
+    } catch (err) {
+      console.error("Semantic tomography error:", err);
+      setError(err.message);
+    } finally {
+      setIsAnalyzingSemantics(false);
     }
   };
 
@@ -350,6 +425,7 @@ function App() {
     { id: "maieutic", label: "Maieutic", icon: Brain },
     { id: "translation", label: "Translation", icon: Languages },
     { id: "vision", label: "Vision", icon: Eye },
+    { id: "semantic-tomography", label: "Quantum Analysis", icon: Target },
   ];
 
   // System/developer tabs (third row)
@@ -550,40 +626,24 @@ function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-8"
               >
-                {/* Transformation Mode Toggle */}
+                {/* Quantum Narrative Theory Mode */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.05 }}
-                  className="glass rounded-2xl p-6"
+                  className="glass rounded-2xl p-6 border-l-4 border-purple-500"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      <Shield className="w-5 h-5 text-purple-400" />
+                      <Brain className="w-6 h-6 text-purple-400" />
                       <div>
-                        <h3 className="text-lg font-semibold">Transformation Mode</h3>
-                        <p className="text-sm text-gray-400">Choose between balanced and legacy transformation</p>
+                        <h3 className="text-lg font-semibold text-purple-100">Quantum Narrative Engine</h3>
+                        <p className="text-sm text-purple-200">Balanced transformation with quantum consciousness analysis</p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <span className={`text-sm ${!useBalancedTransformation ? 'text-white' : 'text-gray-400'}`}>
-                        Legacy
-                      </span>
-                      <button
-                        onClick={() => setUseBalancedTransformation(!useBalancedTransformation)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          useBalancedTransformation ? 'bg-purple-600' : 'bg-gray-600'
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            useBalancedTransformation ? 'translate-x-6' : 'translate-x-1'
-                          }`}
-                        />
-                      </button>
-                      <span className={`text-sm ${useBalancedTransformation ? 'text-white' : 'text-gray-400'}`}>
-                        Balanced
-                      </span>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-green-400 font-medium">Active</span>
                     </div>
                   </div>
                 </motion.div>
@@ -603,28 +663,52 @@ function App() {
                       </div>
                       <div className="flex items-center space-x-3">
                         {useBalancedTransformation && (
-                          <button
-                            onClick={analyzeBalance}
-                            disabled={isAnalyzingBalance || !narrative.trim()}
-                            className={cn(
-                              "px-4 py-2 rounded-lg font-medium transition-all",
-                              "bg-blue-600 hover:bg-blue-700 text-white",
-                              "disabled:opacity-50 disabled:cursor-not-allowed",
-                              "flex items-center space-x-2"
-                            )}
-                          >
-                            {isAnalyzingBalance ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>Analyzing...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Target className="w-4 h-4" />
-                                <span>Analyze Balance</span>
-                              </>
-                            )}
-                          </button>
+                          <>
+                            <button
+                              onClick={analyzeBalance}
+                              disabled={isAnalyzingBalance || !narrative.trim()}
+                              className={cn(
+                                "px-4 py-2 rounded-lg font-medium transition-all",
+                                "bg-blue-600 hover:bg-blue-700 text-white",
+                                "disabled:opacity-50 disabled:cursor-not-allowed",
+                                "flex items-center space-x-2"
+                              )}
+                            >
+                              {isAnalyzingBalance ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span>Analyzing...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Target className="w-4 h-4" />
+                                  <span>Analyze Balance</span>
+                                </>
+                              )}
+                            </button>
+                            <button
+                              onClick={analyzeSemanticTomography}
+                              disabled={isAnalyzingSemantics || !narrative.trim()}
+                              className={cn(
+                                "px-4 py-2 rounded-lg font-medium transition-all",
+                                "bg-purple-600 hover:bg-purple-700 text-white",
+                                "disabled:opacity-50 disabled:cursor-not-allowed",
+                                "flex items-center space-x-2"
+                              )}
+                            >
+                              {isAnalyzingSemantics ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span>Analyzing...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Brain className="w-4 h-4" />
+                                  <span>QBist Analysis</span>
+                                </>
+                              )}
+                            </button>
+                          </>
                         )}
                         <button
                           onClick={handleTransform}
@@ -656,14 +740,21 @@ function App() {
                         </button>
                       </div>
                     </div>
-                    <TransformationControls
-                      options={options}
-                      selectedPersona={selectedPersona}
-                      selectedNamespace={selectedNamespace}
-                      selectedStyle={selectedStyle}
-                      onPersonaChange={setSelectedPersona}
-                      onNamespaceChange={setSelectedNamespace}
-                      onStyleChange={setSelectedStyle}
+                    <IntelligentAttributeEditor
+                      narrative={narrative}
+                      onAttributesChange={(attrs) => {
+                        setSelectedPersona(attrs.persona);
+                        setSelectedNamespace(attrs.namespace);
+                        setSelectedStyle(attrs.style);
+                        // Persist last selected attributes
+                        localStorage.setItem('lastSelectedPersona', attrs.persona);
+                        localStorage.setItem('lastSelectedNamespace', attrs.namespace);
+                        localStorage.setItem('lastSelectedStyle', attrs.style);
+                      }}
+                      onAnalysisComplete={(analysis) => {
+                        // Store AI analysis for use in transformation
+                        console.log('AI attribute analysis:', analysis);
+                      }}
                     />
                   </motion.div>
                 )}
@@ -763,6 +854,108 @@ function App() {
                         )}
                       </div>
                     )}
+                  </motion.div>
+                )}
+
+                {/* Semantic Tomography Results */}
+                {semanticTomography && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="glass rounded-2xl p-6"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white flex items-center space-x-2">
+                        <Brain className="w-5 h-5 text-purple-400" />
+                        <span>Quantum Narrative Analysis</span>
+                      </h3>
+                      <div className="flex items-center space-x-2 text-purple-300">
+                        <div className="w-3 h-3 bg-purple-400 rounded-full animate-pulse"></div>
+                        <span className="font-medium text-sm">QBist Meaning Analysis Complete</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                      <div className="bg-black/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">Fidelity</span>
+                          <span className="font-mono text-sm text-purple-400">
+                            {semanticTomography.transformation_metrics?.fidelity?.toFixed(3) || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          State similarity measure
+                        </div>
+                      </div>
+
+                      <div className="bg-black/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">Purity Change</span>
+                          <span className={cn(
+                            "font-mono text-sm",
+                            semanticTomography.transformation_metrics?.purity_change > 0 ? "text-green-400" : "text-red-400"
+                          )}>
+                            {semanticTomography.transformation_metrics?.purity_change > 0 ? '+' : ''}
+                            {semanticTomography.transformation_metrics?.purity_change?.toFixed(3) || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {semanticTomography.transformation_metrics?.purity_change > 0 ? 'More focused' : 'More mixed'}
+                        </div>
+                      </div>
+
+                      <div className="bg-black/20 rounded-lg p-4">
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-300 text-sm">Entropy Change</span>
+                          <span className={cn(
+                            "font-mono text-sm",
+                            semanticTomography.transformation_metrics?.entropy_change > 0 ? "text-orange-400" : "text-blue-400"
+                          )}>
+                            {semanticTomography.transformation_metrics?.entropy_change > 0 ? '+' : ''}
+                            {semanticTomography.transformation_metrics?.entropy_change?.toFixed(3) || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {semanticTomography.transformation_metrics?.entropy_change > 0 ? 'More uncertain' : 'More certain'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* POVM Measurement Outcomes */}
+                    {semanticTomography.measurement_outcome && (
+                      <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-4">
+                        <div className="flex items-center space-x-2 mb-3">
+                          <Target className="w-4 h-4 text-green-400" />
+                          <span className="font-medium text-green-300 text-sm">POVM Measurement Outcomes</span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          {Object.entries(semanticTomography.measurement_outcome)
+                            .sort(([,a], [,b]) => b - a)
+                            .slice(0, 8)
+                            .map(([label, prob]) => (
+                              <div key={label} className="text-center p-2 bg-black/30 rounded">
+                                <div className="text-sm font-bold text-green-400">
+                                  {(prob * 100).toFixed(1)}%
+                                </div>
+                                <div className="text-xs text-gray-400 truncate">
+                                  {label}
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Toggle for full semantic tomography view */}
+                    <div className="mt-4 text-center">
+                      <button
+                        onClick={() => setActiveTab("semantic-tomography")}
+                        className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
+                      >
+                        View Full Quantum Analysis →
+                      </button>
+                    </div>
                   </motion.div>
                 )}
 
@@ -996,7 +1189,23 @@ function App() {
                 exit={{ opacity: 0, x: -20 }}
               >
                 <ErrorBoundary>
-                  <WritebookEditor />
+                  {writebookView === 'manager' ? (
+                    <WritebookManager onNavigateToEditor={navigateToWritebook} />
+                  ) : writebookView === 'page-editor' ? (
+                    <WritebookPageEditor 
+                      pageId={editingPageId}
+                      onNavigateBack={navigateToWritebookManager}
+                      onSave={(page, writebook) => {
+                        // Handle any additional save logic here
+                        console.log('Page saved:', page.id);
+                      }}
+                    />
+                  ) : (
+                    <WritebookEditor 
+                      onNavigateToManager={navigateToWritebookManager}
+                      onNavigateToPageEditor={navigateToPageEditor}
+                    />
+                  )}
                 </ErrorBoundary>
               </motion.div>
             )}
@@ -1011,6 +1220,17 @@ function App() {
                 <VisionAnalysis
                   isActive={true}
                 />
+              </motion.div>
+            )}
+
+            {activeTab === "semantic-tomography" && (
+              <motion.div
+                key="semantic-tomography"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <SemanticTomography />
               </motion.div>
             )}
           </AnimatePresence>

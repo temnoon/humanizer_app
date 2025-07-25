@@ -42,15 +42,23 @@ const MarkdownRenderer = ({
     // Custom renderer for tables to add styling
     const renderer = new marked.Renderer();
     
-    // Enhanced table rendering
+    // Enhanced table rendering with safety checks
     renderer.table = function(header, body) {
-      return `<table class="markdown-table"><thead>${header}</thead><tbody>${body}</tbody></table>`;
+      const safeHeader = header || '';
+      const safeBody = body || '';
+      return `<table class="markdown-table"><thead>${safeHeader}</thead><tbody>${safeBody}</tbody></table>`;
     };
     
     renderer.tablecell = function(content, flags) {
-      const type = flags.header ? 'th' : 'td';
-      const align = flags.align ? ` style="text-align: ${flags.align}"` : '';
-      return `<${type}${align}>${content}</${type}>`;
+      const safeContent = content != null ? String(content) : '';
+      const type = flags && flags.header ? 'th' : 'td';
+      const align = flags && flags.align ? ` style="text-align: ${flags.align}"` : '';
+      return `<${type}${align}>${safeContent}</${type}>`;
+    };
+    
+    renderer.tablerow = function(content) {
+      const safeContent = content != null ? String(content) : '';
+      return `<tr>${safeContent}</tr>`;
     };
     
     // Enhanced code block rendering
@@ -83,19 +91,42 @@ const MarkdownRenderer = ({
       setRenderError(null);
       
       try {
+        // Ensure content is a string
+        const safeContent = typeof content === 'string' ? content : String(content || '');
+        
+        if (!safeContent.trim()) {
+          containerRef.current.innerHTML = '';
+          setIsRendering(false);
+          return;
+        }
+        
         // Configure marked
         configureMarked();
         
         // Check if content has LaTeX
-        const contentHasLatex = containsLatex(content);
+        const contentHasLatex = containsLatex(safeContent);
         setHasLatex(contentHasLatex);
         
-        // Render content with both Markdown and LaTeX support
-        const success = await renderMarkdownWithLatex(
-          containerRef.current,
-          content,
-          (markdownContent) => marked(markdownContent)
-        );
+        let success = false;
+        
+        if (contentHasLatex) {
+          // Render content with both Markdown and LaTeX support
+          success = await renderMarkdownWithLatex(
+            containerRef.current,
+            safeContent,
+            (markdownContent) => marked(markdownContent)
+          );
+        } else {
+          // Simple markdown rendering without LaTeX processing
+          try {
+            const htmlContent = marked(safeContent);
+            containerRef.current.innerHTML = htmlContent;
+            success = true;
+          } catch (error) {
+            console.error('Error rendering markdown:', error);
+            success = false;
+          }
+        }
         
         if (!success) {
           throw new Error('Failed to render content');

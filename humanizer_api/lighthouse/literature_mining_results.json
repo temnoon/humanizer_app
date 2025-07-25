@@ -1,0 +1,31 @@
+{
+  "total_works_processed": 3,
+  "total_passages_analyzed": 40,
+  "total_clusters_discovered": 13,
+  "attribute_categories": {
+    "style": 5,
+    "namespace": 7,
+    "emotional_register": 1
+  },
+  "discovered_attributes_by_category": {
+    "style": [
+      "scraping_simple",
+      "scraping_balanced",
+      "scraping_simple",
+      "scraping_balanced",
+      "scraping_balanced"
+    ],
+    "namespace": [
+      "philosophical_questioning",
+      "romantic_tender",
+      "philosophical_questioning",
+      "dramatic_conflict",
+      "romantic_tender",
+      "nature_lyrical",
+      "romantic_tender"
+    ],
+    "emotional_register": [
+      "swift_dramatic"
+    ]
+  }
+}

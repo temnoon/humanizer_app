@@ -26,8 +26,9 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { cn } from '../utils';
+import MarkdownRenderer from './MarkdownRenderer';
 
-const WritebookEditor = () => {
+const WritebookEditor = ({ onNavigateToManager, onNavigateToPageEditor }) => {
   const [writebookData, setWritebookData] = useState(null);
   const [pages, setPages] = useState([]);
   const [selectedPages, setSelectedPages] = useState(new Set());
@@ -35,10 +36,11 @@ const WritebookEditor = () => {
   const [editingPageId, setEditingPageId] = useState(null);
   const [bookTitle, setBookTitle] = useState('');
   const [savedStatus, setSavedStatus] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Publishing state
   const [isPublishing, setIsPublishing] = useState(false);
-  const [publishStatus, setPublishStatus] = useState(null); // 'success', 'error', null
+  const [publishStatus, setPublishStatus] = useState(null); // 'success', 'local_success', 'error', 'manual', null
   const [publishedUrl, setPublishedUrl] = useState(null);
   const [writebookSettings, setWritebookSettings] = useState({
     baseUrl: 'https://writebook.humanizer.com',
@@ -52,11 +54,29 @@ const WritebookEditor = () => {
     if (exportedData) {
       const data = JSON.parse(exportedData);
       setWritebookData(data);
-      setPages(data.pages || []);
+      const pagesData = data.pages || [];
+      setPages(pagesData);
       setBookTitle(data.title || 'Exported Conversation');
-      // Clear the export data after loading
-      localStorage.removeItem('writebookExportData');
+      
+      // DON'T immediately remove export data - keep it until properly saved
+      // Only clear when user explicitly saves or publishes
     }
+
+    // Handle keyboard shortcuts
+    const handleKeyDown = (e) => {
+      // Prevent Command+Z from closing the tab
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        // Only prevent default if we're focused on the writebook editor
+        if (document.activeElement?.closest('.writebook-editor') || 
+            document.querySelector('.writebook-editor')?.contains(document.activeElement)) {
+          e.preventDefault();
+          console.log('Undo prevented in writebook editor - use individual page editing for undo functionality');
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const deletePage = (pageId) => {
@@ -66,11 +86,29 @@ const WritebookEditor = () => {
       newSet.delete(pageId);
       return newSet;
     });
+    
+    // Clear any editing states for the deleted page
+    if (editingPageId === pageId) {
+      setEditingPageId(null);
+    }
   };
 
   const deleteSelectedPages = () => {
+    if (selectedPages.size > 0) {
+      setShowDeleteConfirm(true);
+    }
+  };
+
+  const confirmDeletePages = () => {
+    const deletedPageIds = Array.from(selectedPages);
     setPages(pages.filter(page => !selectedPages.has(page.id)));
     setSelectedPages(new Set());
+    setShowDeleteConfirm(false);
+    
+    // Clear any editing states for deleted pages
+    if (deletedPageIds.includes(editingPageId)) {
+      setEditingPageId(null);
+    }
   };
 
   const movePage = (pageId, direction) => {
@@ -146,6 +184,17 @@ const WritebookEditor = () => {
     linkElement.setAttribute('download', exportFileDefaultName);
     linkElement.click();
 
+    // Save the current state after export
+    if (writebookData) {
+      const updatedWritebook = {
+        ...writebookData,
+        title: bookTitle,
+        pages: pages,
+        lastModified: new Date().toISOString()
+      };
+      localStorage.setItem('writebookExportData', JSON.stringify(updatedWritebook));
+    }
+
     setSavedStatus(true);
     setTimeout(() => setSavedStatus(false), 3000);
   };
@@ -179,47 +228,119 @@ const WritebookEditor = () => {
         source_metadata: writebookData?.metadata || {}
       };
 
-      // Attempt to publish to your Writebook instance
-      const response = await fetch(`${writebookSettings.baseUrl}/api/import_conversation`, {
+      // First try to check connection to remote server
+      const connectionTest = await fetch('http://127.0.0.1:8100/api/writebook/test-connection', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...(writebookSettings.apiKey && { 'Authorization': `Bearer ${writebookSettings.apiKey}` })
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(writebookPayload)
+        body: JSON.stringify({
+          base_url: writebookSettings.baseUrl
+        })
+      });
+
+      const connectionResult = await connectionTest.json();
+      
+      // If remote server is not available, publish locally instead
+      if (!connectionResult.basic_connection || !connectionResult.api_available) {
+        console.log('Remote writebook server not available, publishing locally...');
+        
+        // CRITICAL: Use existing ID or create new one only if none exists
+        const existingId = writebookData?.id || `local_${Date.now()}`;
+        
+        const localWritebook = {
+          id: existingId,
+          title: bookTitle,
+          content: writebookPayload,
+          published_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          status: 'local_published',
+          type: 'writebook',
+          pages_count: pages.length,
+          word_count: pages.reduce((total, page) => total + (page.content?.split(' ').length || 0), 0),
+          is_public: writebookSettings.isPublic,
+          source: 'humanizer_app'
+        };
+
+        // CRITICAL: Update existing entry instead of creating duplicate
+        const publishedBooks = JSON.parse(localStorage.getItem('published_writebooks') || '[]');
+        const existingIndex = publishedBooks.findIndex(book => book.id === existingId);
+        
+        if (existingIndex >= 0) {
+          // Update existing entry
+          publishedBooks[existingIndex] = localWritebook;
+        } else {
+          // Add new entry only if it doesn't exist
+          publishedBooks.push(localWritebook);
+        }
+        localStorage.setItem('published_writebooks', JSON.stringify(publishedBooks));
+        
+        // Clear export data only after successful local save
+        localStorage.removeItem('writebookExportData');
+
+        setPublishedUrl(`local://writebook/${localWritebook.id}`);
+        setPublishStatus('local_success');
+        
+        setTimeout(() => setPublishStatus(null), 5000);
+        setIsPublishing(false);
+        return;
+      }
+
+      // If connection is available, try to publish remotely
+      const response = await fetch('http://127.0.0.1:8100/api/writebook/publish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...writebookPayload,
+          settings: {
+            base_url: writebookSettings.baseUrl,
+            api_key: writebookSettings.apiKey
+          }
+        })
       });
 
       if (response.ok) {
         const result = await response.json();
-        setPublishedUrl(result.url || `${writebookSettings.baseUrl}/books/${result.book_id}`);
-        setPublishStatus('success');
         
-        // Store the published URL for future reference
-        if (result.book_id) {
-          localStorage.setItem(`writebook_${writebookData?.metadata?.conversation_id}`, JSON.stringify({
-            book_id: result.book_id,
-            url: result.url,
-            published_at: new Date().toISOString()
-          }));
+        if (result.success) {
+          setPublishedUrl(result.url || `${writebookSettings.baseUrl}/books/${result.book_id}`);
+          setPublishStatus('success');
+          
+          // Store the published URL for future reference
+          if (result.book_id) {
+            localStorage.setItem(`writebook_${writebookData?.metadata?.conversation_id}`, JSON.stringify({
+              book_id: result.book_id,
+              url: result.url,
+              published_at: new Date().toISOString()
+            }));
+          }
+        } else {
+          // Handle different error types from the proxy API
+          if (result.error === 'api_not_found') {
+            console.warn('Writebook API endpoint not found on remote server.');
+            window.open(`${writebookSettings.baseUrl}`, '_blank');
+            setPublishStatus('manual');
+          } else if (result.error === 'connection_error') {
+            console.error('Could not connect to writebook server:', result.message);
+            setPublishStatus('error');
+          } else {
+            console.error('Publishing failed:', result.message);
+            setPublishStatus('error');
+          }
         }
       } else {
-        // If API endpoint doesn't exist yet, provide helpful instructions
-        if (response.status === 404) {
-          console.warn('Writebook API endpoint not found. You need to add the custom API endpoint to your Writebook installation.');
-          // Fall back to opening the Writebook site with instructions
-          window.open(`${writebookSettings.baseUrl}`, '_blank');
-          setPublishStatus('manual');
-        } else {
-          throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-        }
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
       }
     } catch (error) {
       console.error('Failed to publish to Writebook:', error);
       setPublishStatus('error');
       
-      // Provide fallback: open Writebook with instructions
-      if (error.message.includes('fetch')) {
-        // Network error - probably API endpoint doesn't exist yet
+      // Provide fallback for network errors
+      if (error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
+        // Network error - probably local API is down
+        console.warn('Local API connection failed, trying direct connection...');
         window.open(`${writebookSettings.baseUrl}`, '_blank');
         setPublishStatus('manual');
       }
@@ -247,6 +368,35 @@ const WritebookEditor = () => {
     return new Date(timestamp).toLocaleString();
   };
 
+  // Utility function to clear all writebook data
+  const clearAllWritebookData = () => {
+    const keysToRemove = [];
+    
+    // Find all localStorage keys that might contain writebook data
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (
+        key.includes('writebook') || 
+        key === 'published_writebooks' ||
+        key === 'writebookExportData' ||
+        key.startsWith('writebook_')
+      )) {
+        keysToRemove.push(key);
+      }
+    }
+    
+    // Remove all identified keys
+    keysToRemove.forEach(key => {
+      localStorage.removeItem(key);
+      console.log(`Removed localStorage key: ${key}`);
+    });
+    
+    console.log(`Cleared ${keysToRemove.length} writebook-related localStorage entries`);
+    
+    // Force reload the page to reset state
+    window.location.reload();
+  };
+
   if (!writebookData) {
     return (
       <div className="max-w-4xl mx-auto p-6">
@@ -258,19 +408,28 @@ const WritebookEditor = () => {
           <p className="text-gray-600 dark:text-gray-400 mb-6">
             Export a conversation from the Conversations tab to start creating your writebook.
           </p>
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
             <p className="text-sm text-blue-800 dark:text-blue-200">
               <strong>How to use:</strong> Go to the Conversations tab, find an interesting conversation, 
               and click "Export to Writebook" to start editing it here.
             </p>
           </div>
+          {onNavigateToManager && (
+            <button
+              onClick={onNavigateToManager}
+              className="flex items-center gap-2 mx-auto px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
+            >
+              <BookOpen className="w-4 h-4" />
+              Browse Existing Writebooks
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-6 space-y-6 min-h-screen writebook-editor">
       {/* Header */}
       <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl p-6 border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-4">
@@ -280,7 +439,34 @@ const WritebookEditor = () => {
               <input
                 type="text"
                 value={bookTitle}
-                onChange={(e) => setBookTitle(e.target.value)}
+                onChange={(e) => {
+                  const newTitle = e.target.value;
+                  setBookTitle(newTitle);
+                  
+                  // Only update local state, don't auto-save on every keystroke
+                  if (writebookData) {
+                    const updatedWritebook = {
+                      ...writebookData,
+                      title: newTitle,
+                      lastModified: new Date().toISOString()
+                    };
+                    setWritebookData(updatedWritebook);
+                  }
+                }}
+                onBlur={() => {
+                  // Save only on blur, not on every keystroke
+                  if (writebookData) {
+                    const updatedWritebook = {
+                      ...writebookData,
+                      title: bookTitle,
+                      lastModified: new Date().toISOString()
+                    };
+                    setWritebookData(updatedWritebook);
+                    
+                    // Save to export data location only
+                    localStorage.setItem('writebookExportData', JSON.stringify(updatedWritebook));
+                  }
+                }}
                 className="text-2xl font-bold text-gray-900 dark:text-white bg-transparent border-none focus:outline-none focus:ring-2 focus:ring-blue-400 rounded px-2 py-1"
                 placeholder="Enter book title..."
               />
@@ -290,6 +476,23 @@ const WritebookEditor = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onNavigateToManager && (
+              <button
+                onClick={onNavigateToManager}
+                className="flex items-center gap-2 px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                <BookOpen className="w-4 h-4" />
+                Back to Manager
+              </button>
+            )}
+            <button
+              onClick={clearAllWritebookData}
+              className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+              title="Clear all writebook data and reset"
+            >
+              <Trash2 className="w-4 h-4" />
+              Clear All Data
+            </button>
             {selectedPages.size > 0 && (
               <button
                 onClick={deleteSelectedPages}
@@ -332,7 +535,7 @@ const WritebookEditor = () => {
               disabled={isPublishing || !bookTitle.trim() || pages.length === 0}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                publishStatus === 'success' 
+                publishStatus === 'success' || publishStatus === 'local_success'
                   ? "bg-green-600 text-white" 
                   : publishStatus === 'error'
                   ? "bg-red-600 text-white"
@@ -350,6 +553,11 @@ const WritebookEditor = () => {
                 <>
                   <Check className="w-4 h-4" />
                   Published!
+                </>
+              ) : publishStatus === 'local_success' ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  Saved Locally!
                 </>
               ) : publishStatus === 'error' ? (
                 <>
@@ -380,13 +588,13 @@ const WritebookEditor = () => {
           exit={{ opacity: 0, y: -10 }}
           className={cn(
             "p-4 rounded-lg border",
-            publishStatus === 'success' && "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200",
+            (publishStatus === 'success' || publishStatus === 'local_success') && "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200",
             publishStatus === 'error' && "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200",
             publishStatus === 'manual' && "bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-800 dark:text-orange-200"
           )}
         >
           <div className="flex items-start gap-3">
-            {publishStatus === 'success' && <Check className="w-5 h-5 mt-0.5 flex-shrink-0" />}
+            {(publishStatus === 'success' || publishStatus === 'local_success') && <Check className="w-5 h-5 mt-0.5 flex-shrink-0" />}
             {publishStatus === 'error' && <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />}
             {publishStatus === 'manual' && <ExternalLink className="w-5 h-5 mt-0.5 flex-shrink-0" />}
             <div className="flex-1">
@@ -404,6 +612,13 @@ const WritebookEditor = () => {
                       View Published Writebook <ExternalLink className="w-3 h-3" />
                     </a>
                   )}
+                </>
+              )}
+              {publishStatus === 'local_success' && (
+                <>
+                  <h4 className="font-medium mb-1">Successfully Saved Locally!</h4>
+                  <p className="text-sm mb-2">Your writebook has been saved in the Humanizer app. You can continue editing and will be able to publish to writebook.humanizer.com once the remote server is configured.</p>
+                  <p className="text-sm text-green-700 dark:text-green-300">📚 Find your saved writebooks in the Writebook Manager tab.</p>
                 </>
               )}
               {publishStatus === 'error' && (
@@ -515,7 +730,7 @@ end`}
           </p>
         </div>
         
-        <div className="max-h-96 overflow-y-auto">
+        <div className="max-h-[calc(100vh-20rem)] overflow-y-auto">
           {pages.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               No pages in this writebook
@@ -570,7 +785,7 @@ end`}
                             <h4 className="font-medium text-gray-900 dark:text-white">
                               {page.title}
                             </h4>
-                          ) : isEditing ? (
+                          ) : isEditing && editingPageId === page.id ? (
                             <textarea
                               value={page.content}
                               onChange={(e) => updatePageContent(page.id, e.target.value)}
@@ -579,12 +794,15 @@ end`}
                               autoFocus
                             />
                           ) : (
-                            <p 
-                              className="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 cursor-pointer"
+                            <div 
+                              className="text-sm text-gray-700 dark:text-gray-300 cursor-pointer max-h-24 overflow-hidden"
                               onClick={() => setEditingPageId(page.id)}
                             >
-                              {page.content || page.title}
-                            </p>
+                              <MarkdownRenderer 
+                                content={page.content || page.title || ''} 
+                                className="text-sm markdown-preview-truncated"
+                              />
+                            </div>
                           )}
                         </div>
                       </div>
@@ -612,6 +830,13 @@ end`}
                           title="Add section after"
                         >
                           <Plus className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onNavigateToPageEditor && onNavigateToPageEditor(page.id, writebookData, pages)}
+                          className="p-1 text-purple-600 hover:text-purple-700"
+                          title="Edit page"
+                        >
+                          <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => deletePage(page.id)}
@@ -647,6 +872,52 @@ end`}
           </div>
         </div>
       )}
+
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full border border-gray-200 dark:border-gray-700"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <AlertCircle className="w-6 h-6 text-red-600" />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Delete {selectedPages.size} Page{selectedPages.size > 1 ? 's' : ''}?
+                </h3>
+              </div>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                Are you sure you want to delete {selectedPages.size} selected page{selectedPages.size > 1 ? 's' : ''}? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeletePages}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  Delete {selectedPages.size} Page{selectedPages.size > 1 ? 's' : ''}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import markdown rendering styles */
+@import './styles/markdown.css';
+
+/* Additional utility styles for markdown preview in components */
+.markdown-preview-truncated {
+  @apply overflow-hidden;
+}
+
+.markdown-preview-truncated .markdown-table {
+  font-size: 0.75rem;
+  margin: 0.5em 0;
+}
+
+.markdown-preview-truncated .markdown-table th,
+.markdown-preview-truncated .markdown-table td {
+  padding: 4px 6px;
+}
+
+.markdown-preview-truncated h1,
+.markdown-preview-truncated h2,
+.markdown-preview-truncated h3,
+.markdown-preview-truncated h4,
+.markdown-preview-truncated h5,
+.markdown-preview-truncated h6 {
+  margin: 0.3em 0 0.2em 0;
+  font-size: 0.9em;
+}
+
+.markdown-preview-truncated p {
+  margin: 0.2em 0;
+}
+
 @layer base {
     :root {
         --background: 0 0% 100%;
