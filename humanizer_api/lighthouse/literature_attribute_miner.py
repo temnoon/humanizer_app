@@ -41,15 +41,27 @@ except ImportError:
     HTTP_CLIENT_AVAILABLE = False
     print("httpx not available, using urllib for HTTP requests")
 
-# Import our quantum narrative tools
+# Import our quantum narrative tools and embedding system
 try:
     from narrative_theory import QuantumNarrativeEngine, MeaningState
     from attribute_intelligence import AttributeIntelligenceEngine
-    from sentence_transformers import SentenceTransformer
     QUANTUM_AVAILABLE = True
 except ImportError as e:
     logging.warning(f"Quantum tools not available: {e}")
     QUANTUM_AVAILABLE = False
+
+# Import centralized embedding system
+try:
+    from embedding_config import get_embedding_manager, embed_text, get_embedding_dimensions
+    EMBEDDING_CONFIG_AVAILABLE = True
+except ImportError:
+    # Fallback to sentence transformers
+    try:
+        from sentence_transformers import SentenceTransformer
+        EMBEDDING_CONFIG_AVAILABLE = False
+    except ImportError:
+        EMBEDDING_CONFIG_AVAILABLE = None
+        logging.warning("No embedding system available")
 
 logger = logging.getLogger(__name__)
 
@@ -186,16 +198,51 @@ class LiterarySemanticAnalyzer:
     
     def __init__(self, 
                  quantum_engine: Optional[Any] = None,
-                 embedding_model: str = "all-MiniLM-L6-v2"):
+                 embedding_model: Optional[str] = None):
         self.quantum_engine = quantum_engine
         
-        # Initialize embedding model
+        # Initialize centralized embedding system
+        if EMBEDDING_CONFIG_AVAILABLE:
+            try:
+                from embedding_config import get_embedding_manager
+                self.embedding_manager = get_embedding_manager()
+                if embedding_model:
+                    self.embedding_manager.set_active_model(embedding_model)
+                self.embedding_model_name = self.embedding_manager.active_model
+                self.embedding_dimensions = self.embedding_manager.get_dimensions()
+                logger.info(f"Using centralized embedding manager: {self.embedding_model_name} ({self.embedding_dimensions}D)")
+                self.embedder = None  # Use manager instead
+            except Exception as e:
+                logger.error(f"Failed to initialize embedding manager: {e}")
+                self.embedding_manager = None
+                self._init_fallback_embedder(embedding_model or "all-MiniLM-L6-v2")
+        else:
+            self.embedding_manager = None
+            self._init_fallback_embedder(embedding_model or "all-MiniLM-L6-v2")
+            
+        self.db_path = "./data/literature_attributes.db"
+        self._init_database()
+    
+    def _init_fallback_embedder(self, embedding_model: str):
+        """Initialize fallback sentence transformer embedder."""
         try:
-            self.embedder = SentenceTransformer(embedding_model)
-            logger.info(f"Loaded embedding model: {embedding_model}")
+            if EMBEDDING_CONFIG_AVAILABLE is not None:  # sentence_transformers available
+                self.embedder = SentenceTransformer(embedding_model)
+                # Get dimensions by generating test embedding
+                test_embedding = self.embedder.encode("test")
+                self.embedding_dimensions = len(test_embedding)
+                self.embedding_model_name = embedding_model
+                logger.info(f"Loaded fallback embedding model: {embedding_model} ({self.embedding_dimensions}D)")
+            else:
+                logger.warning("No embedding system available")
+                self.embedder = None
+                self.embedding_dimensions = 768  # Default assumption for nomic-embed-text
+                self.embedding_model_name = "none"
         except Exception as e:
             logger.error(f"Failed to load embedding model: {e}")
             self.embedder = None
+            self.embedding_dimensions = 768  # Default assumption for nomic-embed-text
+            self.embedding_model_name = "none"
             
         self.db_path = "./data/literature_attributes.db"
         self._init_database()
@@ -311,12 +358,11 @@ class LiterarySemanticAnalyzer:
     async def analyze_passage_semantics(self, passage: LiteraryPassage) -> LiteraryPassage:
         """Analyze a passage using embeddings and quantum tools."""
         
-        if not self.embedder:
-            return passage
-            
         try:
-            # Generate embedding
-            embedding = self.embedder.encode(passage.text)
+            # Generate embedding using centralized system
+            embedding = self._generate_embedding(passage.text)
+            if embedding is None:
+                return passage
             passage.embedding = embedding
             
             # Generate quantum meaning-state if available
@@ -333,6 +379,20 @@ class LiterarySemanticAnalyzer:
         except Exception as e:
             logger.warning(f"Failed to analyze passage semantics: {e}")
             return passage
+    
+    def _generate_embedding(self, text: str) -> Optional[np.ndarray]:
+        """Generate embedding using the configured embedding system."""
+        try:
+            if self.embedding_manager:
+                return self.embedding_manager.embed_text(text)
+            elif self.embedder:
+                return self.embedder.encode(text)
+            else:
+                logger.warning("No embedding system available")
+                return None
+        except Exception as e:
+            logger.error(f"Embedding generation failed: {e}")
+            return None
     
     def store_passage(self, passage: LiteraryPassage):
         """Store analyzed passage in database."""
@@ -707,13 +767,25 @@ async def mine_literature_for_attributes(gutenberg_ids: List[str],
     
     logger.info(f"Starting literature mining for {len(gutenberg_ids)} works")
     
-    # Initialize components
+    # Initialize components with centralized embedding configuration
     if QUANTUM_AVAILABLE:
         quantum_engine = QuantumNarrativeEngine(semantic_dimension=8)
     else:
         quantum_engine = None
+    
+    # Use centralized embedding system - prefer nomic-embed-text for PostgreSQL consistency
+    if EMBEDDING_CONFIG_AVAILABLE:
+        try:
+            from embedding_config import get_embedding_manager
+            embedding_manager = get_embedding_manager()
+            # Ensure we're using nomic-embed-text for consistency with archive (768D)
+            if "nomic-embed-text" in embedding_manager.models:
+                embedding_manager.set_active_model("nomic-embed-text")
+                logger.info(f"Set embedding model to nomic-embed-text for PostgreSQL consistency")
+        except Exception as e:
+            logger.warning(f"Could not configure nomic-embed-text: {e}")
         
-    analyzer = LiterarySemanticAnalyzer(quantum_engine=quantum_engine)
+    analyzer = LiterarySemanticAnalyzer(quantum_engine=quantum_engine, embedding_model="nomic-embed-text")
     discovery_engine = AttributeDiscoveryEngine()
     
     total_passages = 0

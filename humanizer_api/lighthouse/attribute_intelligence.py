@@ -20,8 +20,19 @@ import json
 import sqlite3
 from pathlib import Path
 import logging
-from sentence_transformers import SentenceTransformer
 from datetime import datetime
+
+# Import centralized embedding system
+try:
+    from embedding_config import get_embedding_manager, embed_text, get_embedding_dimensions
+    EMBEDDING_CONFIG_AVAILABLE = True
+except ImportError:
+    # Fallback to sentence transformers
+    try:
+        from sentence_transformers import SentenceTransformer
+        EMBEDDING_CONFIG_AVAILABLE = False
+    except ImportError:
+        EMBEDDING_CONFIG_AVAILABLE = None
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +66,54 @@ class AttributeIntelligenceEngine:
     """
     
     def __init__(self, 
-                 embedding_model: str = "all-MiniLM-L6-v2",
+                 embedding_model: Optional[str] = None,
                  rag_db_path: str = "./data/attribute_patterns.db",
                  quantum_engine=None):
         """Initialize the attribute intelligence system."""
         
-        # Load embedding model
+        # Initialize embedding system - prefer nomic-embed-text for PostgreSQL consistency
+        if EMBEDDING_CONFIG_AVAILABLE:
+            try:
+                self.embedding_manager = get_embedding_manager()
+                # Set to nomic-embed-text for consistency with archive (768D PostgreSQL)
+                if embedding_model:
+                    self.embedding_manager.set_active_model(embedding_model)
+                elif "nomic-embed-text" in self.embedding_manager.models:
+                    self.embedding_manager.set_active_model("nomic-embed-text")
+                    logger.info("Set embedding model to nomic-embed-text for PostgreSQL consistency")
+                
+                self.embedding_model_name = self.embedding_manager.active_model
+                self.embedding_dimensions = self.embedding_manager.get_dimensions()
+                logger.info(f"Using centralized embedding manager: {self.embedding_model_name} ({self.embedding_dimensions}D)")
+                self.embedder = None  # Use manager instead
+            except Exception as e:
+                logger.error(f"Failed to initialize embedding manager: {e}")
+                self.embedding_manager = None
+                self._init_fallback_embedder(embedding_model or "nomic-embed-text")
+        else:
+            self.embedding_manager = None
+            self._init_fallback_embedder(embedding_model or "nomic-embed-text")
+    
+    def _init_fallback_embedder(self, embedding_model: str):
+        """Initialize fallback sentence transformer embedder."""
         try:
-            self.embedder = SentenceTransformer(embedding_model)
-            logger.info(f"Loaded embedding model: {embedding_model}")
+            if EMBEDDING_CONFIG_AVAILABLE is not None:  # sentence_transformers available
+                self.embedder = SentenceTransformer(embedding_model)
+                # Get dimensions by generating test embedding
+                test_embedding = self.embedder.encode("test")
+                self.embedding_dimensions = len(test_embedding)
+                self.embedding_model_name = embedding_model
+                logger.info(f"Loaded fallback embedding model: {embedding_model} ({self.embedding_dimensions}D)")
+            else:
+                logger.warning("No embedding system available")
+                self.embedder = None
+                self.embedding_dimensions = 768  # Default assumption for nomic-embed-text
+                self.embedding_model_name = "none"
         except Exception as e:
             logger.error(f"Failed to load embedding model: {e}")
             self.embedder = None
+            self.embedding_dimensions = 768  # Default assumption for nomic-embed-text
+            self.embedding_model_name = "none"
             
         # Initialize RAG database
         self.rag_db_path = rag_db_path
@@ -125,6 +172,20 @@ class AttributeIntelligenceEngine:
         conn.commit()
         conn.close()
         logger.info("RAG database initialized")
+    
+    def _generate_embedding(self, text: str) -> Optional[np.ndarray]:
+        """Generate embedding using the configured embedding system."""
+        try:
+            if self.embedding_manager:
+                return self.embedding_manager.embed_text(text)
+            elif self.embedder:
+                return self.embedder.encode(text)
+            else:
+                logger.warning("No embedding system available")
+                return None
+        except Exception as e:
+            logger.error(f"Embedding generation failed: {e}")
+            return None
 
     def _load_semantic_anchors(self):
         """Load semantic anchor points for embedding space exploration."""
@@ -180,12 +241,13 @@ class AttributeIntelligenceEngine:
         }
         
         for anchor_id, config in default_anchors.items():
-            embedding = self.embedder.encode(config["text"])
-            self.anchor_points[anchor_id] = {
-                'embedding': embedding,
-                'description': config["text"],
-                'hints': config["hints"]
-            }
+            embedding = self._generate_embedding(config["text"])
+            if embedding is not None:
+                self.anchor_points[anchor_id] = {
+                    'embedding': embedding,
+                    'description': config["text"],
+                    'hints': config["hints"]
+                }
             
         logger.info("Created default semantic anchors")
 
@@ -225,12 +287,12 @@ class AttributeIntelligenceEngine:
             AttributeProfile with recommended attributes and reasoning
         """
         
-        if not self.embedder:
+        # Step 1: Generate narrative embedding
+        narrative_embedding = self._generate_embedding(narrative)
+        
+        if narrative_embedding is None:
             # Fallback to default attributes
             return self._fallback_attributes()
-            
-        # Step 1: Generate narrative embedding
-        narrative_embedding = self.embedder.encode(narrative)
         
         # Step 2: Find nearest semantic anchors
         anchor_similarities = self._find_nearest_anchors(narrative_embedding)
@@ -472,7 +534,7 @@ Select the BEST combination for this transformation. Respond in JSON:
             style="contemplative",
             confidence=0.3,
             reasoning="Fallback - embedding model not available",
-            embedding_anchor=np.zeros(384),  # Default size
+            embedding_anchor=np.zeros(768),  # Default size for nomic-embed-text consistency
             semantic_neighborhood=[],
             povm_coordinates=None
         )
@@ -486,11 +548,12 @@ Select the BEST combination for this transformation. Respond in JSON:
                                     transformation_type: str = "balanced"):
         """Record transformation outcome for RAG learning."""
         try:
-            if not self.embedder:
+            source_embedding = self._generate_embedding(source_text)
+            target_embedding = self._generate_embedding(target_text)
+            
+            if source_embedding is None or target_embedding is None:
+                logger.warning("Could not generate embeddings for transformation outcome")
                 return
-                
-            source_embedding = self.embedder.encode(source_text)
-            target_embedding = self.embedder.encode(target_text)
             
             conn = sqlite3.connect(self.rag_db_path)
             cursor = conn.cursor()
@@ -634,10 +697,10 @@ Select the BEST combination for this transformation. Respond in JSON:
                 # Create weighted meaning-state ensemble
                 if neighbor_texts:
                     context_text = f"Archive context: {' | '.join(neighbor_texts)}"
-                    # Generate context embedding using the same embedder
-                    if self.embedder:
-                        context_embedding = self.embedder.encode(context_text)
-                        context_embedding = torch.tensor(context_embedding, dtype=torch.float32)
+                    # Generate context embedding using the configured system
+                    context_embedding_np = self._generate_embedding(context_text)
+                    if context_embedding_np is not None:
+                        context_embedding = torch.tensor(context_embedding_np, dtype=torch.float32)
                     else:
                         # Fallback to random embedding with same dimension as input
                         context_embedding = torch.randn(embedding.shape[0])

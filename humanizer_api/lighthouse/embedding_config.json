@@ -1,0 +1,32 @@
+{
+  "active_model": "nomic-embed-text",
+  "models": {
+    "nomic-embed-text": {
+      "name": "nomic-embed-text",
+      "provider": "ollama",
+      "dimensions": 768,
+      "endpoint": "http://localhost:11434/api/embeddings",
+      "model_path": null,
+      "max_tokens": 8192,
+      "normalized": true
+    },
+    "all-MiniLM-L6-v2": {
+      "name": "all-MiniLM-L6-v2",
+      "provider": "sentence_transformers",
+      "dimensions": 384,
+      "endpoint": null,
+      "model_path": null,
+      "max_tokens": 512,
+      "normalized": true
+    },
+    "text-embedding-ada-002": {
+      "name": "text-embedding-ada-002",
+      "provider": "openai",
+      "dimensions": 1536,
+      "endpoint": null,
+      "model_path": null,
+      "max_tokens": 8191,
+      "normalized": true
+    }
+  }
+}
