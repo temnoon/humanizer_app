@@ -67,6 +67,7 @@ except ImportError as e:
     INTELLIGENT_ATTRIBUTES_AVAILABLE = False
 from context_aware_splitter import ContextAwareSplitter, process_large_narrative
 from balanced_transformation_api import balanced_router
+from conversation_api import add_conversation_routes
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -102,6 +103,9 @@ app.include_router(writebook_router)
 # Include intelligent attributes router
 if INTELLIGENT_ATTRIBUTES_AVAILABLE:
     app.include_router(intelligent_attr_router)
+
+# Add conversation management routes
+add_conversation_routes(app)
 
 # Initialize LPE components
 projection_engine = ProjectionEngine()
