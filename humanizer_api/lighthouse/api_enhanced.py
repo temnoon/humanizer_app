@@ -68,6 +68,7 @@ except ImportError as e:
 from context_aware_splitter import ContextAwareSplitter, process_large_narrative
 from balanced_transformation_api import balanced_router
 from conversation_api import add_conversation_routes
+from conversation_api_v2 import add_enhanced_conversation_routes
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -106,6 +107,7 @@ if INTELLIGENT_ATTRIBUTES_AVAILABLE:
 
 # Add conversation management routes
 add_conversation_routes(app)
+add_enhanced_conversation_routes(app)
 
 # Initialize LPE components
 projection_engine = ProjectionEngine()
