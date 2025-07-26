@@ -31,14 +31,62 @@ def add_conversation_routes(app: FastAPI):
     Add conversation management routes to an existing FastAPI app.
     """
     
-    @app.get("/api/conversations", response_model=List[Dict[str, Any]])
-    async def list_conversations(detailed: bool = False):
+    @app.get("/api/conversations")
+    async def list_conversations(
+        detailed: bool = False,
+        page: int = 1,
+        limit: int = 20,
+        search: str = "",
+        sort_by: str = "timestamp",
+        order: str = "desc",
+        min_words: int = None,
+        max_words: int = None,
+        min_messages: int = None,
+        max_messages: int = None,
+        date_from: str = None,
+        date_to: str = None,
+        author: str = None
+    ):
         """
-        List all imported conversations.
+        List all imported conversations with pagination and search.
         """
         try:
-            conversations = conversation_browser.list_conversations(detailed=detailed)
-            return conversations
+            # Use search if provided
+            if search.strip():
+                conversations = conversation_browser.search_conversations(search.strip(), limit * 10)  # Get more for filtering
+            else:
+                conversations = conversation_browser.list_conversations(detailed=detailed)
+            
+            # Apply additional filters
+            filtered_conversations = conversations
+            if min_messages:
+                filtered_conversations = [c for c in filtered_conversations if c.get('messages', 0) >= min_messages]
+            if max_messages:
+                filtered_conversations = [c for c in filtered_conversations if c.get('messages', 0) <= max_messages]
+            
+            # Apply sorting
+            if sort_by == "timestamp":
+                filtered_conversations.sort(key=lambda x: x.get('imported', ''), reverse=(order == 'desc'))
+            elif sort_by == "title":
+                filtered_conversations.sort(key=lambda x: x.get('title', ''), reverse=(order == 'desc'))
+            elif sort_by == "messages":
+                filtered_conversations.sort(key=lambda x: x.get('messages', 0), reverse=(order == 'desc'))
+            
+            # Apply pagination
+            total = len(filtered_conversations)
+            start_idx = (page - 1) * limit
+            end_idx = start_idx + limit
+            paginated_conversations = filtered_conversations[start_idx:end_idx]
+            
+            return {
+                "conversations": paginated_conversations,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "pages": (total + limit - 1) // limit
+                }
+            }
         except Exception as e:
             logger.error(f"Failed to list conversations: {e}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -70,31 +118,35 @@ def add_conversation_routes(app: FastAPI):
     @app.get("/api/conversations/{conversation_id}/messages")
     async def get_conversation_messages(conversation_id: str, 
                                       start: int = 0, 
-                                      limit: int = 50):
+                                      limit: int = 1000):
         """
         Get messages from a conversation with pagination.
         """
         try:
-            conversation = conversation_browser.importer.load_conversation(conversation_id)
-            if not conversation:
+            conversation_data = conversation_browser.show_conversation(
+                conversation_id, 
+                max_content_length=10000,  # Get full content
+                show_metadata=True
+            )
+            
+            if not conversation_data:
                 raise HTTPException(status_code=404, detail="Conversation not found")
             
-            messages = conversation.messages[start:start + limit]
+            messages = conversation_data.get('messages', [])
+            paginated_messages = messages[start:start + limit] if limit > 0 else messages
             
             return {
-                "conversation_id": conversation_id,
-                "total_messages": len(conversation.messages),
-                "start": start,
-                "limit": limit,
-                "messages": [
-                    {
-                        "id": msg.id,
-                        "role": msg.role,
-                        "content": msg.content,
-                        "timestamp": msg.timestamp.isoformat() if msg.timestamp else None,
-                        "metadata": msg.metadata
-                    } for msg in messages
-                ]
+                "conversation": {
+                    "id": conversation_id,
+                    "title": conversation_data.get('title', ''),
+                    "source_format": conversation_data.get('source_format', 'unknown')
+                },
+                "messages": paginated_messages,
+                "pagination": {
+                    "start": start,
+                    "limit": limit,
+                    "total": len(messages)
+                }
             }
         except HTTPException:
             raise

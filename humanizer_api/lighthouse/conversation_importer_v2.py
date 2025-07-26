@@ -760,15 +760,43 @@ class EnhancedConversationImporter:
     
     def _load_existing_conversation(self, conversation_id: str) -> ImportedConversation:
         """Load existing conversation from database."""
-        # This would need to be implemented to reconstruct from database
-        # For now, return a placeholder
-        return ImportedConversation(
-            id=conversation_id,
-            title="Existing Conversation",
-            messages=[],
-            source_format='chatgpt',
-            import_timestamp=datetime.now()
-        )
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Get conversation details
+            cursor.execute("""
+                SELECT title, source_format, import_timestamp, original_created, 
+                       original_updated, checksum, metadata, media_directory
+                FROM conversations WHERE id = ?
+            """, (conversation_id,))
+            conv_row = cursor.fetchone()
+            
+            if not conv_row:
+                raise ValueError(f"Conversation {conversation_id} not found")
+            
+            # Get message count for display
+            cursor.execute("SELECT COUNT(*) FROM messages WHERE conversation_id = ?", (conversation_id,))
+            message_count = cursor.fetchone()[0]
+            
+            # Parse metadata
+            metadata = json.loads(conv_row[6]) if conv_row[6] else {}
+            
+            return ImportedConversation(
+                id=conversation_id,
+                title=conv_row[0],
+                messages=[],  # We don't need to load all messages for duplicate display
+                source_format=conv_row[1],
+                import_timestamp=datetime.fromisoformat(conv_row[2]),
+                original_created=datetime.fromisoformat(conv_row[3]) if conv_row[3] else None,
+                original_updated=datetime.fromisoformat(conv_row[4]) if conv_row[4] else None,
+                checksum=conv_row[5],
+                metadata={**metadata, 'total_messages': message_count},
+                media_directory=conv_row[7]
+            )
+            
+        finally:
+            conn.close()
     
     def _store_in_archive_system(self, conversation: ImportedConversation):
         """Store conversation in archive system (same as original)."""

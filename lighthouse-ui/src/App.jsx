@@ -28,7 +28,9 @@ import {
   TrendingUp,
   Cpu,
   Shield,
-  BookOpen
+  BookOpen,
+  Plus,
+  Image
 } from "lucide-react";
 import ReactDiffViewer from "react-diff-viewer-continued";
 import { cn } from "./utils";
@@ -48,6 +50,7 @@ import AttributeStudio from "./components/AttributeStudio";
 import LLMConfigManager from "./components/LLMConfigManager";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ConversationBrowser from "./ConversationBrowser";
+import ImageGallery from "./components/ImageGallery";
 import EnhancedAPIConsole from "./components/EnhancedAPIConsole";
 import BatchProcessor from "./components/BatchProcessor";
 import ArchiveExplorer from "./components/ArchiveExplorer";
@@ -413,6 +416,7 @@ function App() {
   // Primary workflow tabs (main row)
   const primaryTabs = [
     { id: "conversation", label: "Conversations", icon: MessageSquare },
+    { id: "gallery", label: "Gallery", icon: Image },
     { id: "transform", label: "Transform", icon: Zap },
     { id: "transformations", label: "Saved", icon: Archive },
     { id: "writebook", label: "Writebook", icon: BookOpen },
@@ -615,6 +619,18 @@ function App() {
                   onNavigateToConversation={navigateToConversationBrowser}
                   onNavigateToWritebook={navigateToWritebook}
                 />
+              </motion.div>
+            )}
+
+
+            {activeTab === "gallery" && (
+              <motion.div
+                key="gallery"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+              >
+                <ImageGallery />
               </motion.div>
             )}
 

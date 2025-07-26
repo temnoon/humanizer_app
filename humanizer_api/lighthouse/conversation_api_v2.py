@@ -80,11 +80,14 @@ def add_enhanced_conversation_routes(app: FastAPI):
                 # Import conversation
                 conversation, status = import_single_conversation(temp_path, force_update)
                 
+                # Get message count (either from messages array or metadata for duplicates)
+                message_count = len(conversation.messages) if conversation.messages else conversation.metadata.get('total_messages', 0)
+                
                 return {
                     "success": True,
                     "conversation_id": conversation.id,
                     "title": conversation.title,
-                    "messages": len(conversation.messages),
+                    "messages": message_count,
                     "source_format": conversation.source_format,
                     "import_status": status,
                     "checksum": conversation.checksum,

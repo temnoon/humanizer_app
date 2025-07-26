@@ -72,6 +72,11 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
   const [showLogs, setShowLogs] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('idle'); // 'idle', 'processing', 'completed', 'failed'
   
+  // Conversation import state
+  const [conversationImportStatus, setConversationImportStatus] = useState('idle'); // 'idle', 'uploading', 'success', 'error'
+  const [conversationImportResults, setConversationImportResults] = useState(null);
+  const [conversationImportError, setConversationImportError] = useState('');
+  
   // New features state
   const [conversations, setConversations] = useState([]);
   const [conversationsPagination, setConversationsPagination] = useState({});
@@ -310,6 +315,81 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
     handleFileSelection();
   };
 
+  // Conversation import handlers
+  const handleSingleConversationImport = async (file) => {
+    if (!file) return;
+    
+    setConversationImportStatus('uploading');
+    setConversationImportError('');
+    
+    try {
+      const formData = new FormData();
+      formData.append('conversation_file', file);
+      formData.append('force_update', 'false');
+      
+      const response = await fetch('/api/conversations/import/single', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      setConversationImportResults(result);
+      setConversationImportStatus('success');
+      
+      // Refresh the conversations list
+      if (currentView === 'conversations') {
+        loadConversations();
+      }
+      
+    } catch (err) {
+      setConversationImportError(err.message);
+      setConversationImportStatus('error');
+    }
+  };
+
+  const handleBulkConversationImport = async (files) => {
+    if (!files || files.length === 0) return;
+    
+    setConversationImportStatus('uploading');
+    setConversationImportError('');
+    
+    try {
+      const formData = new FormData();
+      
+      // Add all files to form data
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+      formData.append('force_update', 'false');
+      
+      const response = await fetch('/api/conversations/import/bulk', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Bulk upload failed: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      setConversationImportResults(result);
+      setConversationImportStatus('success');
+      
+      // Refresh the conversations list
+      if (currentView === 'conversations') {
+        loadConversations();
+      }
+      
+    } catch (err) {
+      setConversationImportError(err.message);
+      setConversationImportStatus('error');
+    }
+  };
+
   const startFolderProcessing = async () => {
     try {
       setIsProcessing(true);
@@ -374,9 +454,12 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
         headers: { "Content-Type": "application/x-www-form-urlencoded" }
       });
 
+      let archiveResults = [];
+      let conversationResults = [];
+      
       if (response.ok) {
         const results = await response.json();
-        setSearchResults(results.results || []);
+        archiveResults = results.results || [];
         
         // Store search metadata
         setChunkAnalysis({
@@ -386,9 +469,38 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
           search_time_ms: Date.now() - lastSearchTime
         });
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || "Search failed");
+        console.warn("Archive search failed, continuing with conversation search only");
       }
+      
+      // Also search local conversations
+      try {
+        const conversationResponse = await fetch('http://127.0.0.1:8100/api/conversations/search', {
+          method: 'POST',
+          body: new URLSearchParams({
+            query: searchQuery,
+            limit: '10'
+          })
+        });
+        
+        if (conversationResponse.ok) {
+          const convResults = await conversationResponse.json();
+          conversationResults = (convResults.conversations || []).map(conv => ({
+            id: `conversation_${conv.id}`,
+            title: `${conv.title} (Conversation)`,
+            content: `Conversation with ${conv.messages} messages`,
+            source: `imported_${conv.source}`,
+            timestamp: conv.imported,
+            conversation_id: conv.id,
+            type: 'conversation'
+          }));
+        }
+      } catch (convError) {
+        console.warn("Conversation search failed:", convError);
+      }
+      
+      // Combine results
+      const combinedResults = [...conversationResults, ...archiveResults];
+      setSearchResults(combinedResults);
     } catch (error) {
       console.error("Search error:", error);
       setSearchResults([]);
@@ -502,9 +614,10 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
 
   const handleConversationSelect = (result) => {
     if (onNavigateToConversation) {
-      if (result.content_type === "conversation") {
+      if (result.content_type === "conversation" || result.type === "conversation") {
         // Navigate to the conversation browser with this conversation
-        onNavigateToConversation(result.id);
+        const conversationId = result.conversation_id || result.id;
+        onNavigateToConversation(conversationId);
       } else if (result.content_type === "message") {
         // Navigate to the conversation browser with the parent conversation and highlight this message
         onNavigateToConversation(result.conversation_id, result.id);
@@ -1245,6 +1358,112 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                 </div>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Conversation Import Section */}
+      <AnimatePresence>
+        {currentView === "search" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ delay: 0.05 }}
+            className="glass rounded-2xl p-6 mb-6"
+          >
+            <div className="flex items-center space-x-2 mb-4">
+              <MessageSquare className="w-5 h-5 text-blue-400" />
+              <h3 className="text-xl font-semibold">Import Conversations</h3>
+              <span className="px-2 py-1 bg-blue-600/20 text-blue-300 text-xs rounded-full">
+                ChatGPT & Others
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Single Conversation Import */}
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="flex items-center space-x-2 mb-3">
+                  <FileText className="w-5 h-5 text-blue-400" />
+                  <h4 className="font-medium">Single Conversation</h4>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Upload individual conversation.json files from ChatGPT downloads
+                </p>
+                <label className="block">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={(e) => handleSingleConversationImport(e.target.files[0])}
+                    className="hidden"
+                  />
+                  <div className="border-2 border-dashed border-blue-500/30 rounded-lg p-3 text-center hover:border-blue-500/50 transition-colors cursor-pointer">
+                    <Upload className="w-6 h-6 text-blue-400 mx-auto mb-2" />
+                    <span className="text-sm text-blue-300">Click to select conversation.json</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Bulk Conversation Import */}
+              <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                <div className="flex items-center space-x-2 mb-3">
+                  <Folder className="w-5 h-5 text-green-400" />
+                  <h4 className="font-medium">Bulk Import</h4>
+                </div>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Upload folder containing multiple conversation directories
+                </p>
+                <label className="block">
+                  <input
+                    type="file"
+                    webkitdirectory=""
+                    multiple
+                    onChange={(e) => handleBulkConversationImport(Array.from(e.target.files))}
+                    className="hidden"
+                  />
+                  <div className="border-2 border-dashed border-green-500/30 rounded-lg p-3 text-center hover:border-green-500/50 transition-colors cursor-pointer">
+                    <Folder className="w-6 h-6 text-green-400 mx-auto mb-2" />
+                    <span className="text-sm text-green-300">Click to select conversation folder</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            {/* Import Status */}
+            {(conversationImportStatus !== 'idle') && (
+              <div className="mt-4 p-4 rounded-lg bg-black/20">
+                {conversationImportStatus === 'uploading' && (
+                  <div className="flex items-center space-x-2 text-blue-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Importing conversations...</span>
+                  </div>
+                )}
+                {conversationImportStatus === 'success' && conversationImportResults && (
+                  <div className="text-green-400">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Check className="w-4 h-4" />
+                      <span>Import successful!</span>
+                    </div>
+                    {conversationImportResults.title ? (
+                      <div className="text-sm text-green-300">
+                        Imported: {conversationImportResults.title} ({conversationImportResults.messages} messages)
+                      </div>
+                    ) : (
+                      <div className="text-sm text-green-300">
+                        Processed: {conversationImportResults.total_found} conversations 
+                        ({conversationImportResults.new} new, {conversationImportResults.updated} updated)
+                      </div>
+                    )}
+                  </div>
+                )}
+                {conversationImportStatus === 'error' && conversationImportError && (
+                  <div className="flex items-center space-x-2 text-red-400">
+                    <X className="w-4 h-4" />
+                    <span>Import failed: {conversationImportError}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>

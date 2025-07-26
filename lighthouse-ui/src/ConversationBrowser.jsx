@@ -80,7 +80,8 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
   });
 
   // API base
-  const API_BASE = "http://localhost:7200";
+  const ARCHIVE_API_BASE = "http://localhost:7200";
+  const LIGHTHOUSE_API_BASE = "http://localhost:8100/api";
 
   // Load conversations on mount and when pagination changes
   useEffect(() => {
@@ -139,9 +140,21 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
       // Find conversation from ID and load it
       const findAndLoadConversation = async () => {
         try {
-          const response = await fetch(`${API_BASE}/conversations/${initialConversationId}/messages?limit=1000`);
+          // Try lighthouse API first (imported conversations)
+          let response = await fetch(`${LIGHTHOUSE_API_BASE}/conversations/${initialConversationId}/messages?limit=1000`);
+          let data = null;
+          
           if (response.ok) {
-            const data = await response.json();
+            data = await response.json();
+          } else {
+            // Try archive API (existing conversations)
+            response = await fetch(`${ARCHIVE_API_BASE}/conversations/${initialConversationId}/messages?limit=1000`);
+            if (response.ok) {
+              data = await response.json();
+            }
+          }
+          
+          if (data && data.conversation) {
             setSelectedConversation(data.conversation);
             setConversationMessages(data.messages || []);
             setCurrentView("conversation");
@@ -164,7 +177,13 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
   const loadConversations = async (searchTerm = "") => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams({
+      let allConversations = [];
+      
+      // Query both archive API and lighthouse API
+      const promises = [];
+      
+      // 1. Query archive API (existing conversations)
+      const archiveParams = new URLSearchParams({
         page: pagination.page.toString(),
         limit: pagination.limit.toString(),
         sort_by: sortBy,
@@ -172,24 +191,84 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
       });
       
       if (searchTerm.trim()) {
-        params.append("search", searchTerm.trim());
+        archiveParams.append("search", searchTerm.trim());
       }
       
-      // Add filters
-      if (filters.minWords) params.append("min_words", filters.minWords);
-      if (filters.maxWords) params.append("max_words", filters.maxWords);
-      if (filters.minMessages) params.append("min_messages", filters.minMessages);
-      if (filters.maxMessages) params.append("max_messages", filters.maxMessages);
-      if (filters.dateFrom) params.append("date_from", filters.dateFrom);
-      if (filters.dateTo) params.append("date_to", filters.dateTo);
-      if (filters.author) params.append("author", filters.author);
+      // Add filters for archive API
+      if (filters.minWords) archiveParams.append("min_words", filters.minWords);
+      if (filters.maxWords) archiveParams.append("max_words", filters.maxWords);
+      if (filters.minMessages) archiveParams.append("min_messages", filters.minMessages);
+      if (filters.maxMessages) archiveParams.append("max_messages", filters.maxMessages);
+      if (filters.dateFrom) archiveParams.append("date_from", filters.dateFrom);
+      if (filters.dateTo) archiveParams.append("date_to", filters.dateTo);
+      if (filters.author) archiveParams.append("author", filters.author);
       
-      const response = await fetch(`${API_BASE}/conversations?${params}`);
-      if (response.ok) {
-        const data = await response.json();
-        setConversations(data.conversations || []);
-        setPagination(prev => ({ ...prev, total: data.pagination?.total || 0 }));
+      promises.push(
+        fetch(`${ARCHIVE_API_BASE}/conversations?${archiveParams}`)
+          .then(res => res.ok ? res.json() : { conversations: [] })
+          .catch(() => ({ conversations: [] }))
+      );
+      
+      // 2. Query lighthouse API (imported conversations)
+      const lighthouseParams = new URLSearchParams({
+        page: 1,  // Get all from lighthouse for now
+        limit: 100,
+        sort_by: sortBy,
+        order: sortOrder
+      });
+      
+      if (searchTerm.trim()) {
+        lighthouseParams.append("search", searchTerm.trim());
       }
+      
+      promises.push(
+        fetch(`${LIGHTHOUSE_API_BASE}/conversations?${lighthouseParams}`)
+          .then(res => res.ok ? res.json() : { conversations: [] })
+          .catch(() => ({ conversations: [] }))
+      );
+      
+      // Wait for both APIs
+      const [archiveData, lighthouseData] = await Promise.all(promises);
+      
+      // Combine results and mark sources
+      const archiveConversations = (archiveData.conversations || []).map(conv => ({
+        ...conv,
+        _source: 'archive'
+      }));
+      
+      const lighthouseConversations = (lighthouseData.conversations || []).map(conv => ({
+        ...conv,
+        _source: 'lighthouse'
+      }));
+      
+      allConversations = [...archiveConversations, ...lighthouseConversations];
+      
+      // Apply client-side filtering and sorting since we're combining sources
+      if (filters.minMessages) {
+        allConversations = allConversations.filter(c => (c.messages || c.message_count || 0) >= filters.minMessages);
+      }
+      if (filters.maxMessages) {
+        allConversations = allConversations.filter(c => (c.messages || c.message_count || 0) <= filters.maxMessages);
+      }
+      
+      // Sort combined results
+      if (sortBy === "timestamp") {
+        allConversations.sort((a, b) => {
+          const aTime = a.imported || a.timestamp || '';
+          const bTime = b.imported || b.timestamp || '';
+          return sortOrder === 'desc' ? bTime.localeCompare(aTime) : aTime.localeCompare(bTime);
+        });
+      } else if (sortBy === "title") {
+        allConversations.sort((a, b) => {
+          const aTitle = a.title || '';
+          const bTitle = b.title || '';
+          return sortOrder === 'desc' ? bTitle.localeCompare(aTitle) : aTitle.localeCompare(bTitle);
+        });
+      }
+      
+      setConversations(allConversations);
+      setPagination(prev => ({ ...prev, total: allConversations.length }));
+      
     } catch (error) {
       console.error("Failed to load conversations:", error);
     } finally {
@@ -200,9 +279,21 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
   const loadConversationMessages = async (conversationId) => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/conversations/${conversationId}/messages?limit=1000`);
+      // Try lighthouse API first (imported conversations)
+      let response = await fetch(`${LIGHTHOUSE_API_BASE}/conversations/${conversationId}/messages?limit=1000`);
+      let data = null;
+      
       if (response.ok) {
-        const data = await response.json();
+        data = await response.json();
+      } else {
+        // Try archive API (existing conversations)
+        response = await fetch(`${ARCHIVE_API_BASE}/conversations/${conversationId}/messages?limit=1000`);
+        if (response.ok) {
+          data = await response.json();
+        }
+      }
+      
+      if (data) {
         setConversationMessages(data.messages || []);
         setCurrentView("conversation");
       }
@@ -215,7 +306,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
 
   const loadTransformationQueue = async () => {
     try {
-      const response = await fetch(`${API_BASE}/transformation-queue`);
+      const response = await fetch(`${ARCHIVE_API_BASE}/transformation-queue`);
       if (response.ok) {
         const data = await response.json();
         setTransformationQueue(data.queue || []);
@@ -227,7 +318,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
 
   const loadEmbeddingsStats = async () => {
     try {
-      const response = await fetch(`${API_BASE}/embeddings/statistics`);
+      const response = await fetch(`${ARCHIVE_API_BASE}/embeddings/statistics`);
       if (response.ok) {
         const data = await response.json();
         setEmbeddingsStats(data);
@@ -254,7 +345,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
         requestBody.max_conversations = maxConversations;
       }
 
-      const response = await fetch(`${API_BASE}/generate-embeddings`, {
+      const response = await fetch(`${ARCHIVE_API_BASE}/generate-embeddings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -313,7 +404,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
         requestBody.content_ids = contentIds;
       }
 
-      const response = await fetch(`${API_BASE}/generate-hierarchical-chunks`, {
+      const response = await fetch(`${ARCHIVE_API_BASE}/generate-hierarchical-chunks`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -357,7 +448,7 @@ const ConversationBrowser = ({ initialConversationId = null, initialMessageId = 
 
   const addToQueue = async (contentIds, transformationType = "humanize", priority = "normal", description = "") => {
     try {
-      const response = await fetch(`${API_BASE}/transformation-queue`, {
+      const response = await fetch(`${ARCHIVE_API_BASE}/transformation-queue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

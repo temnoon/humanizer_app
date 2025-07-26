@@ -15,7 +15,7 @@ from pathlib import Path
 import argparse
 import logging
 
-from conversation_importer import ConversationImporter, ImportedConversation
+from conversation_importer_v2 import EnhancedConversationImporter, ImportedConversation, ConversationDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -25,25 +25,51 @@ class ConversationBrowser:
     """
     
     def __init__(self, storage_dir: str = "./data/imported_conversations"):
-        self.importer = ConversationImporter(storage_dir)
+        self.importer = EnhancedConversationImporter(storage_dir)
+        self.db = ConversationDatabase()
     
     def list_conversations(self, detailed: bool = False) -> List[Dict[str, Any]]:
         """
         List all imported conversations with optional detailed information.
         """
-        conversations = self.importer.list_imported_conversations()
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
         
-        if not detailed:
-            # Return simplified list
-            return [{
-                'id': conv['id'],
-                'title': conv['title'],
-                'source': conv['source_format'],
-                'messages': conv['total_messages'],
-                'created': conv.get('original_created', ''),
-                'imported': conv['import_timestamp']
-            } for conv in conversations]
+        cursor.execute("""
+            SELECT c.id, c.title, c.source_format, c.import_timestamp, 
+                   c.original_created, c.original_updated, c.metadata,
+                   COUNT(m.id) as message_count
+            FROM conversations c
+            LEFT JOIN messages m ON c.id = m.conversation_id
+            GROUP BY c.id, c.title, c.source_format, c.import_timestamp, 
+                     c.original_created, c.original_updated, c.metadata
+            ORDER BY c.import_timestamp DESC
+        """)
         
+        conversations = []
+        for row in cursor.fetchall():
+            conv_data = {
+                'id': row[0],
+                'title': row[1],
+                'source': row[2],
+                'messages': row[7],
+                'created': row[4] or '',
+                'imported': row[3]
+            }
+            
+            if detailed:
+                conv_data.update({
+                    'source_format': row[2],
+                    'original_created': row[4],
+                    'original_updated': row[5],
+                    'metadata': json.loads(row[6]) if row[6] else {},
+                    'total_messages': row[7]
+                })
+            
+            conversations.append(conv_data)
+        
+        conn.close()
         return conversations
     
     def show_conversation(self, conversation_id: str, 
@@ -52,47 +78,110 @@ class ConversationBrowser:
         """
         Display a conversation with formatted output.
         """
-        conversation = self.importer.load_conversation(conversation_id)
-        if not conversation:
-            return None
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
         
-        result = {
-            'id': conversation.id,
-            'title': conversation.title,
-            'source_format': conversation.source_format,
-            'total_messages': len(conversation.messages),
-            'created': conversation.original_created.isoformat() if conversation.original_created else None,
-            'updated': conversation.original_updated.isoformat() if conversation.original_updated else None,
-            'imported': conversation.import_timestamp.isoformat(),
-            'messages': []
-        }
-        
-        for i, message in enumerate(conversation.messages):
-            content = message.content
-            if len(content) > max_content_length:
-                content = content[:max_content_length] + "..."
+        try:
+            # Get conversation details
+            cursor.execute("""
+                SELECT title, source_format, import_timestamp, original_created, 
+                       original_updated, metadata
+                FROM conversations WHERE id = ?
+            """, (conversation_id,))
+            conv_row = cursor.fetchone()
             
-            msg_data = {
-                'index': i + 1,
-                'id': message.id,
-                'role': message.role,
-                'content': content,
-                'timestamp': message.timestamp.isoformat() if message.timestamp else None
+            if not conv_row:
+                return None
+            
+            # Get messages
+            cursor.execute("""
+                SELECT id, role, content, timestamp, parent_id, metadata
+                FROM messages 
+                WHERE conversation_id = ?
+                ORDER BY timestamp ASC
+            """, (conversation_id,))
+            
+            messages = []
+            for i, msg_row in enumerate(cursor.fetchall()):
+                content = msg_row[2]
+                if len(content) > max_content_length:
+                    content = content[:max_content_length] + "..."
+                
+                msg_data = {
+                    'index': i + 1,
+                    'id': msg_row[0],
+                    'role': msg_row[1],
+                    'content': content,
+                    'body_text': content,  # Add both for compatibility
+                    'timestamp': msg_row[3]
+                }
+                
+                if show_metadata:
+                    msg_data['metadata'] = json.loads(msg_row[5]) if msg_row[5] else {}
+                    msg_data['parent_id'] = msg_row[4]
+                    # Note: media_files would need separate query, skipping for now
+                    msg_data['media_files'] = []
+                
+                messages.append(msg_data)
+            
+            # Parse metadata
+            metadata = json.loads(conv_row[5]) if conv_row[5] else {}
+            
+            result = {
+                'id': conversation_id,
+                'title': conv_row[0],
+                'source_format': conv_row[1],
+                'total_messages': len(messages),
+                'created': conv_row[3],
+                'updated': conv_row[4],
+                'imported': conv_row[2],
+                'messages': messages
             }
             
-            if show_metadata:
-                msg_data['metadata'] = message.metadata
-                msg_data['media_files'] = message.media_files
+            return result
             
-            result['messages'].append(msg_data)
-        
-        return result
+        finally:
+            conn.close()
     
     def search_conversations(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Search conversations using the archive system.
+        Search conversations using local database.
         """
-        return self.importer.search_conversations(query, limit)
+        import sqlite3
+        conn = sqlite3.connect(self.db.db_path)
+        cursor = conn.cursor()
+        
+        # Search in both conversation titles and message content
+        search_query = f"%{query}%"
+        
+        cursor.execute("""
+            SELECT DISTINCT c.id, c.title, c.source_format, c.import_timestamp,
+                   COUNT(m.id) as message_count
+            FROM conversations c
+            LEFT JOIN messages m ON c.id = m.conversation_id
+            WHERE c.title LIKE ? OR c.id IN (
+                SELECT DISTINCT conversation_id 
+                FROM messages 
+                WHERE content LIKE ?
+            )
+            GROUP BY c.id, c.title, c.source_format, c.import_timestamp
+            ORDER BY c.import_timestamp DESC
+            LIMIT ?
+        """, (search_query, search_query, limit))
+        
+        results = []
+        for row in cursor.fetchall():
+            results.append({
+                'id': row[0],
+                'title': row[1],
+                'source': row[2],
+                'messages': row[4],
+                'imported': row[3]
+            })
+        
+        conn.close()
+        return results
     
     def get_conversation_stats(self) -> Dict[str, Any]:
         """
