@@ -260,6 +260,41 @@ config/secrets/
 .env.local
 .env.production
 
+# AI/ML Model data and caches
+faiss_index*
+faiss_metadata.json
+embedding_config.json
+*.model
+*.embedding
+
+# Gutenberg data and cache
+data/gutenberg_cache/
+*gutenberg_cache/
+gutenberg_data/
+literature_mining_results.json
+
+# Generated test data
+test_attributes/
+test_curated/
+discovered_attributes/
+mass_attributes/
+
+# Content storage
+content_blobs/
+archived_content/
+
+# Temporary output files
+*.txt
+*.json
+transform_result.*
+hello_transformed.*
+future_bright.*
+attributes.*
+
+# Conversation downloads
+Conversation-Downloads/
+**/Conversation-Downloads/
+
 # Process ID files
 *.pid
 .backend.pid

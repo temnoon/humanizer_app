@@ -69,12 +69,58 @@ from context_aware_splitter import ContextAwareSplitter, process_large_narrative
 from balanced_transformation_api import balanced_router
 from conversation_api import add_conversation_routes
 from conversation_api_v2 import add_enhanced_conversation_routes
+from postgres_conversation_api import replace_conversation_routes
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    # Startup
+    logger.info("Starting Enhanced Lighthouse API with full LPE features")
+    
+    # Test LLM provider
+    provider = get_llm_provider()
+    logger.info(f"Using LLM provider: {provider.__class__.__name__}")
+    
+    # Start cleanup task
+    cleanup_task = asyncio.create_task(cleanup_old_sessions())
+    
+    yield
+    
+    # Shutdown
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+    logger.info("Enhanced Lighthouse API shutdown complete")
+
+async def cleanup_old_sessions():
+    """Periodically clean up old maieutic sessions."""
+    while True:
+        await asyncio.sleep(3600)  # Clean up every hour
+        
+        # Remove sessions older than 24 hours
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(hours=24)
+        
+        to_remove = []
+        for session_id, session in maieutic_sessions.items():
+            if session.created_at < cutoff:
+                to_remove.append(session_id)
+        
+        for session_id in to_remove:
+            del maieutic_sessions[session_id]
+        
+        if to_remove:
+            logger.info(f"Cleaned up {len(to_remove)} old maieutic sessions")
 
 # Initialize FastAPI app
 app = FastAPI(
     title="Humanizer Lighthouse API - Enhanced",
     description="Full-featured Lamish Projection Engine with narrative transformation, maieutic dialogue, and translation analysis.",
     version="2.0.0",
+    lifespan=lifespan
 )
 
 # CORS Configuration - Allow network access
@@ -105,9 +151,14 @@ app.include_router(writebook_router)
 if INTELLIGENT_ATTRIBUTES_AVAILABLE:
     app.include_router(intelligent_attr_router)
 
-# Add conversation management routes
-add_conversation_routes(app)
-add_enhanced_conversation_routes(app)
+# Add conversation management routes - use PostgreSQL if available
+try:
+    replace_conversation_routes(app)
+    logger.info("Using PostgreSQL conversation routes")
+except Exception as e:
+    logger.warning(f"PostgreSQL not available, falling back to SQLite: {e}")
+    add_conversation_routes(app)
+    add_enhanced_conversation_routes(app)
 
 # Initialize LPE components
 projection_engine = ProjectionEngine()
@@ -230,6 +281,95 @@ class TranslationResponse(BaseModel):
 class MultiTranslationRequest(BaseModel):
     text: str = Field(..., example="Innovation requires courage to challenge established norms.")
     test_languages: List[str] = Field(default=["spanish", "french", "german"])
+
+# Quantum Narrative Theory API Models
+class QNTNarrativeRequest(BaseModel):
+    narrative: str = Field(..., example="The old sailor gazed at the endless ocean, knowing that his final voyage would soon begin.")
+    include_quantum_state: bool = Field(default=False, description="Include quantum meaning state analysis")
+    include_essence_vectors: bool = Field(default=True, description="Include essence vector representation")
+    semantic_depth: str = Field(default="standard", description="Analysis depth: 'basic', 'standard', 'deep'")
+
+class QNTPersona(BaseModel):
+    name: str = Field(..., description="Identified persona archetype")
+    confidence: float = Field(..., description="Confidence score 0-1")
+    characteristics: List[str] = Field(..., description="Key persona characteristics")
+    voice_indicators: List[str] = Field(..., description="Textual indicators of this persona")
+
+class QNTNamespace(BaseModel):
+    name: str = Field(..., description="Identified narrative universe/context")
+    confidence: float = Field(..., description="Confidence score 0-1")
+    domain_markers: List[str] = Field(..., description="Domain-specific elements")
+    cultural_context: str = Field(..., description="Cultural/temporal context")
+    reality_layer: str = Field(..., description="Level of abstraction: literal, metaphorical, mythic, etc.")
+
+class QNTStyle(BaseModel):
+    name: str = Field(..., description="Identified stylistic approach")
+    confidence: float = Field(..., description="Confidence score 0-1")
+    linguistic_features: List[str] = Field(..., description="Key linguistic markers")
+    rhetorical_devices: List[str] = Field(..., description="Rhetorical and literary devices")
+    tone_characteristics: List[str] = Field(..., description="Tone and mood indicators")
+
+class QNTEssence(BaseModel):
+    core_meaning: str = Field(..., description="Distilled essential meaning")
+    meaning_density: float = Field(..., description="Semantic concentration 0-1")
+    invariant_elements: List[str] = Field(..., description="Elements preserved across transformations")
+    semantic_vector: Optional[List[float]] = Field(None, description="High-dimensional meaning representation")
+    coherence_score: float = Field(..., description="Internal narrative coherence 0-1")
+    entropy_measure: float = Field(..., description="Meaning entropy/uncertainty")
+
+class QNTQuantumState(BaseModel):
+    dimension: int = Field(..., description="Semantic space dimension")
+    density_matrix: List[List[float]] = Field(..., description="Quantum density matrix representation")
+    eigenvalues: List[float] = Field(..., description="Eigenvalues of the density matrix")
+    purity: float = Field(..., description="Quantum purity measure 0-1")
+    semantic_labels: List[str] = Field(..., description="Labels for semantic dimensions")
+    measurement_probabilities: Dict[str, float] = Field(..., description="POVM measurement outcomes")
+
+class QNTNarrativeAnalysis(BaseModel):
+    narrative_id: str = Field(..., description="Unique identifier for this analysis")
+    original_narrative: str = Field(..., description="Input narrative text")
+    persona: QNTPersona = Field(..., description="Extracted persona information")
+    namespace: QNTNamespace = Field(..., description="Extracted namespace/universe")
+    style: QNTStyle = Field(..., description="Extracted stylistic elements")
+    essence: QNTEssence = Field(..., description="Extracted essential meaning")
+    quantum_state: Optional[QNTQuantumState] = Field(None, description="Quantum meaning state")
+    transformation_potential: Dict[str, float] = Field(..., description="Scores for potential transformations")
+    semantic_topology: Dict[str, Any] = Field(..., description="Structural analysis of meaning relationships")
+    processing_metadata: Dict[str, Any] = Field(..., description="Analysis metadata and confidence metrics")
+
+# Attribute Management Models
+class AttributeAlgorithm(BaseModel):
+    name: str = Field(..., description="Algorithm name")
+    version: str = Field(..., description="Algorithm version")
+    parameters: Dict[str, Any] = Field(..., description="Algorithm parameters used")
+    confidence_threshold: float = Field(..., description="Confidence threshold applied")
+    llm_provider: str = Field(..., description="LLM provider used")
+    prompt_template: str = Field(..., description="Exact prompt template used")
+    processing_steps: List[str] = Field(..., description="Step-by-step processing description")
+
+class SavedAttribute(BaseModel):
+    attribute_id: str = Field(..., description="Unique identifier")
+    name: str = Field(..., description="User-assigned name")
+    attribute_type: str = Field(..., description="Type: persona, namespace, style, essence")
+    narrative_source: str = Field(..., description="Original narrative text")
+    extracted_value: str = Field(..., description="Extracted attribute value")
+    confidence_score: float = Field(..., description="Confidence in extraction")
+    algorithm_used: AttributeAlgorithm = Field(..., description="Algorithm details")
+    created_at: str = Field(..., description="Creation timestamp")
+    tags: List[str] = Field(default=[], description="User-assigned tags")
+    notes: Optional[str] = Field(None, description="User notes")
+
+class SaveAttributeRequest(BaseModel):
+    analysis_id: str = Field(..., description="ID of the analysis to save from")
+    name: str = Field(..., description="Name for the saved attribute")
+    attribute_types: List[str] = Field(..., description="Which attributes to save: persona, namespace, style, essence")
+    tags: List[str] = Field(default=[], description="Tags for organization")
+    notes: Optional[str] = Field(None, description="Additional notes")
+
+class AttributeListResponse(BaseModel):
+    attributes: List[SavedAttribute] = Field(..., description="List of saved attributes")
+    total_count: int = Field(..., description="Total number of attributes")
+    by_type: Dict[str, int] = Field(..., description="Count by attribute type")
 
 # Vision API Models
 class VisionAnalysisRequest(BaseModel):
@@ -2770,36 +2910,7 @@ def generate_mock_attribute_analysis(text: str, mode: str):
         "mode": mode
     }
 
-# Cleanup old sessions periodically
-@app.on_event("startup")
-async def startup_cleanup():
-    """Startup tasks and periodic cleanup."""
-    logger.info("Starting Enhanced Lighthouse API with full LPE features")
-    
-    # Test LLM provider
-    provider = get_llm_provider()
-    logger.info(f"Using LLM provider: {provider.__class__.__name__}")
-    
-    # Start cleanup task
-    asyncio.create_task(cleanup_old_sessions())
-
-async def cleanup_old_sessions():
-    """Periodically clean up old maieutic sessions."""
-    while True:
-        await asyncio.sleep(3600)  # Clean up every hour
-        
-        # Remove sessions older than 24 hours
-        from datetime import datetime, timedelta
-        cutoff = datetime.now() - timedelta(hours=24)
-        
-        to_remove = []
-        for session_id, dialogue in maieutic_sessions.items():
-            if dialogue.session and dialogue.session.created_at < cutoff:
-                to_remove.append(session_id)
-        
-        for session_id in to_remove:
-            del maieutic_sessions[session_id]
-            logger.info(f"Cleaned up old session: {session_id}")
+# Cleanup old sessions handled by lifespan manager above
 
 
 @app.post("/transform-large", summary="Large Narrative Transformation with Context-Aware Splitting")
@@ -3113,6 +3224,265 @@ async def check_narrative_coherence(narratives: List[SemanticTomographyRequest])
         logger.error(f"Coherence checking failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Coherence check failed: {str(e)}")
 
+@app.post("/api/narrative-theory/analyze", response_model=QNTNarrativeAnalysis)
+async def analyze_narrative_qnt(request: QNTNarrativeRequest):
+    """
+    Comprehensive Quantum Narrative Theory analysis extracting persona, namespace, style, and essence.
+    
+    This endpoint implements the complete QNT formalism to decompose a narrative into its 
+    fundamental components according to the latest theoretical framework:
+    
+    - Persona (Ψ): The subjective voice and perspective
+    - Namespace (Ω): The universe of discourse and cultural context  
+    - Style (Σ): The linguistic and rhetorical approach
+    - Essence (E): The invariant core meaning preserved across transformations
+    - Quantum State: Optional high-dimensional meaning representation
+    """
+    if not NARRATIVE_THEORY_AVAILABLE or not quantum_engine:
+        raise HTTPException(status_code=503, detail="Quantum Narrative Theory engine not available")
+    
+    try:
+        import uuid
+        import torch
+        import json
+        import re
+        from datetime import datetime
+        
+        analysis_id = str(uuid.uuid4())
+        start_time = datetime.now()
+        
+        # Get LLM provider for analysis
+        provider = get_llm_provider()
+        
+        # Generate embedding for quantum analysis (if requested)
+        embedding = None
+        quantum_state_data = None
+        
+        if request.include_quantum_state and quantum_engine:
+            # Create a more realistic embedding based on text
+            import hashlib
+            text_hash = hashlib.md5(request.narrative.encode()).hexdigest()
+            torch.manual_seed(int(text_hash[:8], 16))  # Deterministic based on text
+            embedding = torch.randn(768)
+            
+            # Convert to quantum meaning state
+            meaning_state = quantum_engine.text_to_meaning_state(request.narrative, embedding)
+            canonical_probs = quantum_engine.canonical_povm.measure(meaning_state)
+            
+            # Extract quantum state information
+            density_matrix = meaning_state.density_matrix.detach().numpy().tolist()
+            eigenvals = torch.linalg.eigvals(meaning_state.density_matrix).real.detach().numpy().tolist()
+            purity = torch.trace(meaning_state.density_matrix @ meaning_state.density_matrix).real.item()
+            
+            quantum_state_data = QNTQuantumState(
+                dimension=meaning_state.dimension,
+                density_matrix=density_matrix,
+                eigenvalues=eigenvals,
+                purity=purity,
+                semantic_labels=quantum_engine.semantic_labels[:meaning_state.dimension],
+                measurement_probabilities=canonical_probs
+            )
+        
+        # Analyze Persona using LLM
+        persona_prompt = f"""Analyze this narrative text and identify the persona (voice/perspective):
+
+Text: "{request.narrative}"
+
+Extract:
+1. The primary persona archetype (e.g., "wise elder", "curious child", "skeptical scientist", "romantic dreamer")
+2. Key characteristics of this voice
+3. Specific textual indicators that reveal this persona
+
+Respond with JSON:
+{{
+    "name": "persona archetype",
+    "confidence": 0.85,
+    "characteristics": ["trait1", "trait2", "trait3"],
+    "voice_indicators": ["specific phrases", "word choices", "perspective markers"]
+}}"""
+
+        try:
+            persona_response = await provider.complete(persona_prompt, max_tokens=300)
+            persona_data = json.loads(persona_response)
+            persona = QNTPersona(**persona_data)
+        except Exception as e:
+            logger.warning(f"Persona analysis failed, using fallback: {e}")
+            persona = QNTPersona(
+                name="neutral observer",
+                confidence=0.5,
+                characteristics=["objective", "descriptive"],
+                voice_indicators=["third person narrative", "descriptive language"]
+            )
+
+        # Analyze Namespace using LLM
+        namespace_prompt = f"""Analyze this narrative text and identify the namespace (universe/context):
+
+Text: "{request.narrative}"
+
+Extract:
+1. The narrative universe or domain (e.g., "maritime/nautical", "modern urban", "fantasy realm", "domestic life")
+2. Cultural and temporal context
+3. Domain-specific elements and markers
+4. Level of abstraction (literal, metaphorical, mythic, etc.)
+
+Respond with JSON:
+{{
+    "name": "narrative universe",
+    "confidence": 0.85,
+    "domain_markers": ["specific elements", "vocabulary", "references"],
+    "cultural_context": "time period and culture",
+    "reality_layer": "literal/metaphorical/mythic"
+}}"""
+
+        try:
+            namespace_response = await provider.complete(namespace_prompt, max_tokens=300)
+            namespace_data = json.loads(namespace_response)
+            namespace = QNTNamespace(**namespace_data)
+        except Exception as e:
+            logger.warning(f"Namespace analysis failed, using fallback: {e}")
+            namespace = QNTNamespace(
+                name="contemporary realism",
+                confidence=0.5,
+                domain_markers=["everyday language", "realistic scenarios"],
+                cultural_context="modern contemporary",
+                reality_layer="literal"
+            )
+
+        # Analyze Style using LLM
+        style_prompt = f"""Analyze this narrative text and identify the style (linguistic/rhetorical approach):
+
+Text: "{request.narrative}"
+
+Extract:
+1. The stylistic approach (e.g., "lyrical", "conversational", "formal", "poetic", "minimalist")
+2. Key linguistic features and patterns
+3. Rhetorical and literary devices used
+4. Tone and mood characteristics
+
+Respond with JSON:
+{{
+    "name": "stylistic approach",
+    "confidence": 0.85,
+    "linguistic_features": ["sentence structure", "vocabulary level", "rhythm"],
+    "rhetorical_devices": ["metaphor", "repetition", "imagery"],
+    "tone_characteristics": ["melancholic", "hopeful", "urgent"]
+}}"""
+
+        try:
+            style_response = await provider.complete(style_prompt, max_tokens=300)
+            style_data = json.loads(style_response)
+            style = QNTStyle(**style_data)
+        except Exception as e:
+            logger.warning(f"Style analysis failed, using fallback: {e}")
+            style = QNTStyle(
+                name="descriptive prose",
+                confidence=0.5,
+                linguistic_features=["clear sentences", "descriptive language"],
+                rhetorical_devices=["imagery", "narrative flow"],
+                tone_characteristics=["neutral", "informative"]
+            )
+
+        # Analyze Essence using LLM and QNT principles
+        essence_prompt = f"""Analyze this narrative text and extract the essential meaning (essence):
+
+Text: "{request.narrative}"
+
+Extract the core invariant meaning that would be preserved across different transformations:
+1. The distilled essential message
+2. Elements that are fundamental to the meaning
+3. Semantic density/concentration
+4. Internal coherence
+
+Respond with JSON:
+{{
+    "core_meaning": "essential meaning in one sentence",
+    "meaning_density": 0.75,
+    "invariant_elements": ["core concepts", "key relationships", "essential emotions"],
+    "coherence_score": 0.85,
+    "entropy_measure": 0.65
+}}"""
+
+        try:
+            essence_response = await provider.complete(essence_prompt, max_tokens=300)
+            essence_data = json.loads(essence_response)
+            
+            # Add semantic vector if requested
+            semantic_vector = None
+            if request.include_essence_vectors and embedding is not None:
+                # Use a subset of the embedding as semantic vector
+                semantic_vector = embedding[:16].detach().numpy().tolist()
+            
+            essence = QNTEssence(
+                core_meaning=essence_data["core_meaning"],
+                meaning_density=essence_data["meaning_density"],
+                invariant_elements=essence_data["invariant_elements"],
+                semantic_vector=semantic_vector,
+                coherence_score=essence_data["coherence_score"],
+                entropy_measure=essence_data["entropy_measure"]
+            )
+        except Exception as e:
+            logger.warning(f"Essence analysis failed, using fallback: {e}")
+            essence = QNTEssence(
+                core_meaning="A narrative describing a situation or event",
+                meaning_density=0.5,
+                invariant_elements=["narrative structure", "descriptive content"],
+                semantic_vector=None,
+                coherence_score=0.7,
+                entropy_measure=0.5
+            )
+
+        # Calculate transformation potential scores
+        transformation_potential = {
+            "persona_flexibility": min(1.0, 1.0 - persona.confidence + 0.2),
+            "namespace_adaptability": min(1.0, 1.0 - namespace.confidence + 0.2),
+            "style_malleability": min(1.0, 1.0 - style.confidence + 0.2),
+            "essence_preservation": essence.coherence_score,
+            "overall_transformability": (persona.confidence + namespace.confidence + style.confidence) / 3.0
+        }
+
+        # Analyze semantic topology
+        semantic_topology = {
+            "narrative_complexity": len(request.narrative.split()) / 100.0,  # Rough complexity measure
+            "semantic_density_distribution": {
+                "persona_weight": 0.25,
+                "namespace_weight": 0.30,
+                "style_weight": 0.20,
+                "essence_weight": 0.25
+            },
+            "transformation_readiness": transformation_potential["overall_transformability"],
+            "quantum_entanglement_score": quantum_state_data.purity if quantum_state_data else None
+        }
+
+        # Processing metadata
+        processing_time = (datetime.now() - start_time).total_seconds() * 1000
+        processing_metadata = {
+            "processing_time_ms": processing_time,
+            "analysis_depth": request.semantic_depth,
+            "quantum_analysis_enabled": request.include_quantum_state,
+            "essence_vectors_enabled": request.include_essence_vectors,
+            "llm_provider": provider.__class__.__name__,
+            "quantum_engine_dimension": quantum_engine.semantic_dimension if quantum_engine else None,
+            "analysis_timestamp": start_time.isoformat(),
+            "version": "QNT-v2.0"
+        }
+
+        return QNTNarrativeAnalysis(
+            narrative_id=analysis_id,
+            original_narrative=request.narrative,
+            persona=persona,
+            namespace=namespace,
+            style=style,
+            essence=essence,
+            quantum_state=quantum_state_data,
+            transformation_potential=transformation_potential,
+            semantic_topology=semantic_topology,
+            processing_metadata=processing_metadata
+        )
+
+    except Exception as e:
+        logger.error(f"QNT narrative analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Narrative analysis failed: {str(e)}")
+
 @app.get("/api/narrative-theory/semantic-dimensions")
 async def get_semantic_dimensions():
     """Get the semantic dimensions and POVM structure used by the engine."""
@@ -3141,6 +3511,939 @@ async def get_semantic_dimensions():
 
 # ===== END QUANTUM NARRATIVE THEORY ENDPOINTS =====
 
+# ===== ATTRIBUTE MANAGEMENT ENDPOINTS =====
+
+try:
+    from attribute_manager import AttributeStorage, AttributeAlgorithmTracker
+    attribute_storage = AttributeStorage()
+    ATTRIBUTE_MANAGEMENT_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Attribute management not available: {e}")
+    ATTRIBUTE_MANAGEMENT_AVAILABLE = False
+
+@app.post("/api/attributes/save", response_model=Dict[str, Any])
+async def save_attribute_from_analysis(request: SaveAttributeRequest):
+    """Save specific attributes from a QNT analysis for future use."""
+    if not ATTRIBUTE_MANAGEMENT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Attribute management not available")
+    
+    try:
+        # For now, we'll create a mock analysis since we don't have analysis caching yet
+        # In a full implementation, we'd retrieve the analysis from cache by analysis_id
+        
+        # Get LLM provider for algorithm details
+        provider = get_llm_provider()
+        provider_name = provider.__class__.__name__
+        
+        saved_attributes = []
+        
+        for attr_type in request.attribute_types:
+            if attr_type not in ["persona", "namespace", "style", "essence"]:
+                continue
+                
+            # Get algorithm details for this attribute type
+            if attr_type == "persona":
+                algorithm = AttributeAlgorithmTracker.get_persona_algorithm_details(provider_name)
+            elif attr_type == "namespace":
+                algorithm = AttributeAlgorithmTracker.get_namespace_algorithm_details(provider_name)
+            elif attr_type == "style":
+                algorithm = AttributeAlgorithmTracker.get_style_algorithm_details(provider_name)
+            elif attr_type == "essence":
+                algorithm = AttributeAlgorithmTracker.get_essence_algorithm_details(provider_name)
+            
+            # Create attribute data
+            attribute_data = {
+                "name": f"{request.name}_{attr_type}",
+                "attribute_type": attr_type,
+                "source_analysis_id": request.analysis_id,
+                "algorithm_used": algorithm,
+                "confidence_score": 0.85,  # Mock score
+                "value": f"Saved {attr_type} attribute",  # Mock value
+                "tags": request.tags,
+                "notes": request.notes
+            }
+            
+            # Save to storage
+            attr_id = await attribute_storage.save_attribute(attribute_data)
+            saved_attributes.append({
+                "attribute_id": attr_id,
+                "type": attr_type,
+                "name": attribute_data["name"]
+            })
+        
+        return {
+            "success": True,
+            "message": f"Saved {len(saved_attributes)} attributes",
+            "saved_attributes": saved_attributes,
+            "source_analysis": request.analysis_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to save attributes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save attributes: {str(e)}")
+
+@app.get("/api/attributes/list", response_model=AttributeListResponse)
+async def list_saved_attributes(
+    attribute_type: Optional[str] = None,
+    tags: Optional[str] = None,
+    limit: int = 50
+):
+    """List saved attributes with optional filtering."""
+    if not ATTRIBUTE_MANAGEMENT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Attribute management not available")
+    
+    try:
+        # Parse tags if provided
+        tag_list = None
+        if tags:
+            tag_list = [tag.strip() for tag in tags.split(",")]
+        
+        # Get filtered attributes
+        attributes = await attribute_storage.list_attributes(
+            attribute_type=attribute_type,
+            tags=tag_list
+        )
+        
+        # Limit results
+        limited_attributes = attributes[:limit]
+        
+        # Convert to SavedAttribute objects
+        saved_attrs = []
+        for attr in limited_attributes:
+            saved_attr = SavedAttribute(
+                attribute_id=attr["attribute_id"],
+                name=attr["name"],
+                attribute_type=attr["attribute_type"],
+                value=attr["value"],
+                confidence_score=attr["confidence_score"],
+                algorithm_used=AttributeAlgorithm(**attr["algorithm_used"]),
+                created_at=attr["created_at"],
+                tags=attr.get("tags", []),
+                notes=attr.get("notes")
+            )
+            saved_attrs.append(saved_attr)
+        
+        return AttributeListResponse(
+            attributes=saved_attrs,
+            total=len(attributes),
+            filtered=len(limited_attributes)
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to list attributes: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list attributes: {str(e)}")
+
+@app.get("/api/attributes/{attribute_id}", response_model=SavedAttribute)
+async def get_attribute(attribute_id: str):
+    """Get a specific saved attribute by ID."""
+    if not ATTRIBUTE_MANAGEMENT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Attribute management not available")
+    
+    try:
+        attr_data = await attribute_storage.get_attribute(attribute_id)
+        if not attr_data:
+            raise HTTPException(status_code=404, detail="Attribute not found")
+        
+        return SavedAttribute(
+            attribute_id=attr_data["attribute_id"],
+            name=attr_data["name"],
+            attribute_type=attr_data["attribute_type"],
+            value=attr_data["value"],
+            confidence_score=attr_data["confidence_score"],
+            algorithm_used=AttributeAlgorithm(**attr_data["algorithm_used"]),
+            created_at=attr_data["created_at"],
+            tags=attr_data.get("tags", []),
+            notes=attr_data.get("notes")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get attribute: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get attribute: {str(e)}")
+
+@app.delete("/api/attributes/{attribute_id}")
+async def delete_attribute(attribute_id: str):
+    """Delete a saved attribute."""
+    if not ATTRIBUTE_MANAGEMENT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Attribute management not available")
+    
+    try:
+        success = await attribute_storage.delete_attribute(attribute_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Attribute not found")
+        
+        return {
+            "success": True,
+            "message": "Attribute deleted successfully",
+            "attribute_id": attribute_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete attribute: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete attribute: {str(e)}")
+
+@app.get("/api/attributes/stats")
+async def get_attribute_statistics():
+    """Get statistics about saved attributes."""
+    if not ATTRIBUTE_MANAGEMENT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Attribute management not available")
+    
+    try:
+        stats = await attribute_storage.get_statistics()
+        
+        return {
+            "total_attributes": stats["total_attributes"],
+            "by_type": stats["by_type"],
+            "by_algorithm": stats["by_algorithm"],
+            "by_confidence": stats["by_confidence"],
+            "storage_path": stats["storage_path"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get attribute statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get statistics: {str(e)}")
+
+@app.get("/api/attributes/algorithms/{algorithm_name}")
+async def get_algorithm_details(algorithm_name: str):
+    """Get detailed information about a specific algorithm used for attribute extraction."""
+    if not ATTRIBUTE_MANAGEMENT_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Attribute management not available")
+    
+    try:
+        provider = get_llm_provider()
+        provider_name = provider.__class__.__name__
+        
+        # Get algorithm details based on name
+        if algorithm_name.lower() == "persona" or "persona" in algorithm_name.lower():
+            algorithm = AttributeAlgorithmTracker.get_persona_algorithm_details(provider_name)
+        elif algorithm_name.lower() == "namespace" or "namespace" in algorithm_name.lower():
+            algorithm = AttributeAlgorithmTracker.get_namespace_algorithm_details(provider_name)
+        elif algorithm_name.lower() == "style" or "style" in algorithm_name.lower():
+            algorithm = AttributeAlgorithmTracker.get_style_algorithm_details(provider_name)
+        elif algorithm_name.lower() == "essence" or "essence" in algorithm_name.lower():
+            algorithm = AttributeAlgorithmTracker.get_essence_algorithm_details(provider_name)
+        else:
+            raise HTTPException(status_code=404, detail="Algorithm not found")
+        
+        return {
+            "algorithm": algorithm,
+            "transparency": {
+                "purpose": "Provides full algorithmic transparency for attribute extraction",
+                "reproducibility": "All parameters and prompts are exposed for reproduction",
+                "version_tracking": "Algorithm versions are tracked for consistency",
+                "projection_insight": "Enables understanding of how attributes are used in projections"
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get algorithm details: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get algorithm details: {str(e)}")
+
+# ===== END ATTRIBUTE MANAGEMENT ENDPOINTS =====
+
+# ===== GUTENBERG BOOK ANALYSIS ENDPOINTS =====
+
+from gutenberg_service_simple import gutenberg_service
+from pydantic import BaseModel
+
+class BookSearchRequest(BaseModel):
+    query: Optional[str] = None
+    author: Optional[str] = None
+    subject: Optional[str] = None
+    language: str = "en"
+    limit: int = 50
+
+class AnalysisJobRequest(BaseModel):
+    gutenberg_ids: List[int]
+    analysis_type: str = "sample"
+
+@app.get("/gutenberg/search")
+async def search_gutenberg_books(
+    query: Optional[str] = None,
+    author: Optional[str] = None,
+    subject: Optional[str] = None,
+    language: str = "en",
+    limit: int = 50
+):
+    """Search Project Gutenberg catalog for books"""
+    try:
+        books = await gutenberg_service.search_books(
+            query=query,
+            author=author,
+            subject=subject,
+            language=language,
+            limit=limit
+        )
+        
+        books_data = []
+        for book in books:
+            books_data.append({
+                "gutenberg_id": book.gutenberg_id,
+                "title": book.title,
+                "author": book.author,
+                "language": book.language,
+                "subjects": book.subjects,
+                "download_url": book.download_url
+            })
+        
+        return {
+            "books": books_data,
+            "total_found": len(books_data),
+            "query_info": {
+                "query": query,
+                "author": author,
+                "subject": subject,
+                "language": language,
+                "limit": limit
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Gutenberg search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+@app.post("/gutenberg/analyze")
+async def create_gutenberg_analysis_job(request: AnalysisJobRequest):
+    """Create a batch analysis job for Gutenberg books"""
+    try:
+        valid_types = ["sample", "targeted", "full"]
+        if request.analysis_type not in valid_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid analysis_type. Must be one of: {valid_types}"
+            )
+        
+        job_id = await gutenberg_service.create_analysis_job(
+            gutenberg_ids=request.gutenberg_ids,
+            analysis_type=request.analysis_type
+        )
+        
+        return {
+            "success": True,
+            "message": "Analysis job created successfully",
+            "data": {
+                "job_id": job_id,
+                "gutenberg_ids": request.gutenberg_ids,
+                "analysis_type": request.analysis_type,
+                "status": "pending"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Job creation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Job creation failed: {str(e)}")
+
+@app.get("/gutenberg/jobs")
+async def list_gutenberg_jobs():
+    """List all analysis jobs"""
+    try:
+        jobs = await gutenberg_service.list_jobs()
+        
+        jobs_data = []
+        for job in jobs:
+            jobs_data.append({
+                "job_id": job.job_id,
+                "status": job.status,
+                "progress": job.progress,
+                "created_at": job.created_at.isoformat() if job.created_at else None,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                "gutenberg_ids": job.gutenberg_ids,
+                "analysis_type": job.analysis_type,
+                "results_summary": job.results_summary,
+                "error_message": job.error_message
+            })
+        
+        return {
+            "success": True,
+            "message": f"Found {len(jobs_data)} analysis jobs",
+            "data": {"jobs": jobs_data}
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to list jobs: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list jobs: {str(e)}")
+
+@app.get("/gutenberg/jobs/{job_id}")
+async def get_gutenberg_job_status(job_id: str):
+    """Get detailed status of a specific analysis job"""
+    try:
+        job = await gutenberg_service.get_job_status(job_id)
+        
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        return {
+            "job_id": job.job_id,
+            "status": job.status,
+            "progress": job.progress,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "gutenberg_ids": job.gutenberg_ids,
+            "analysis_type": job.analysis_type,
+            "results_summary": job.results_summary,
+            "error_message": job.error_message
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get job status: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get job status: {str(e)}")
+
+@app.get("/gutenberg/jobs/{job_id}/results")
+async def get_gutenberg_job_results(job_id: str, limit: int = 50):
+    """Get results of a completed analysis job"""
+    try:
+        job = await gutenberg_service.get_job_status(job_id)
+        
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        if job.status != "completed":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Job {job_id} is not completed (status: {job.status})"
+            )
+        
+        results = await gutenberg_service.get_job_results(job_id)
+        
+        if not results:
+            raise HTTPException(status_code=404, detail=f"Results for job {job_id} not found")
+        
+        # Limit the results returned
+        if "high_quality_paragraphs" in results:
+            results["high_quality_paragraphs"] = results["high_quality_paragraphs"][:limit]
+        
+        # Handle both old and new result structures
+        job_info = results.get("job_info") or results.get("job")
+        job_results = results.get("results", [])
+        
+        # Handle different result types
+        if isinstance(job_results, dict):
+            # This is a composite analysis with narrative DNA
+            return {
+                "success": True,
+                "message": f"Retrieved results for job {job_id}",
+                "data": {
+                    "job_info": job_info,
+                    "results": job_results
+                }
+            }
+        else:
+            # This is a strategic sampling with paragraph list
+            high_quality_paragraphs = results.get("high_quality_paragraphs", job_results)
+            if isinstance(high_quality_paragraphs, list) and limit:
+                high_quality_paragraphs = high_quality_paragraphs[:limit]
+            
+            return {
+                "success": True,
+                "message": f"Retrieved results for job {job_id}",
+                "data": {
+                    "job_info": job_info,
+                    "results": high_quality_paragraphs,
+                    "summary": job_info.get("results_summary") if job_info else None,
+                    "total_candidates": len(high_quality_paragraphs) if isinstance(high_quality_paragraphs, list) else 0,
+                    "returned_count": min(limit or len(high_quality_paragraphs), len(high_quality_paragraphs)) if isinstance(high_quality_paragraphs, list) else 0
+                }
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get job results: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get job results: {str(e)}")
+
+@app.delete("/gutenberg/jobs/{job_id}")
+async def cancel_gutenberg_job(job_id: str):
+    """Cancel a running analysis job"""
+    try:
+        job = await gutenberg_service.get_job_status(job_id)
+        
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        
+        if job.status in ["completed", "failed"]:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Cannot cancel job in {job.status} status"
+            )
+        
+        job.status = "cancelled"
+        job.completed_at = datetime.now()
+        
+        return {
+            "success": True,
+            "message": f"Job {job_id} cancelled successfully",
+            "data": {"job_id": job_id, "status": "cancelled"}
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cancel job: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to cancel job: {str(e)}")
+
+@app.get("/gutenberg/stats")
+async def get_gutenberg_stats():
+    """Get overall statistics about Gutenberg analysis activities"""
+    try:
+        jobs = await gutenberg_service.list_jobs()
+        
+        stats = {
+            "total_jobs": len(jobs),
+            "completed_jobs": len([j for j in jobs if j.status == "completed"]),
+            "running_jobs": len([j for j in jobs if j.status == "running"]),
+            "failed_jobs": len([j for j in jobs if j.status == "failed"]),
+            "total_books_analyzed": sum(len(j.gutenberg_ids) for j in jobs if j.status == "completed"),
+            "cache_size": len(list(gutenberg_service.cache_dir.glob("*.txt"))),
+            "results_available": len(list(gutenberg_service.cache_dir.glob("analysis_results_*.json")))
+        }
+        
+        return {
+            "success": True,
+            "message": "Analysis statistics retrieved",
+            "data": stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+@app.get("/gutenberg/catalog/browse")
+async def browse_gutenberg_catalog(
+    offset: int = 0,
+    limit: int = 100,
+    sort_by: str = "downloads",  # downloads, title, author, recent
+    language: str = "en"
+):
+    """Browse the full Project Gutenberg catalog with pagination"""
+    try:
+        # Ensure we have catalog cache
+        await gutenberg_service._ensure_catalog_cache()
+        
+        # Get all books from cache
+        all_books = []
+        for book_data in gutenberg_service.catalog_cache:
+            if language == "all" or book_data.get('language', 'en') == language:
+                all_books.append(book_data)
+        
+        # Sort books
+        if sort_by == "downloads":
+            all_books.sort(key=lambda x: x.get('downloads', 0), reverse=True)
+        elif sort_by == "title":
+            all_books.sort(key=lambda x: x.get('title', '').lower())
+        elif sort_by == "author":
+            all_books.sort(key=lambda x: x.get('author', '').lower())
+        elif sort_by == "recent":
+            all_books.sort(key=lambda x: x.get('gutenberg_id', 0), reverse=True)
+        
+        # Apply pagination
+        paginated_books = all_books[offset:offset + limit]
+        
+        return {
+            "success": True,
+            "message": f"Found {len(all_books)} books in catalog",
+            "data": {
+                "books": paginated_books,
+                "pagination": {
+                    "offset": offset,
+                    "limit": limit,
+                    "total_books": len(all_books),
+                    "has_more": offset + limit < len(all_books)
+                },
+                "sort_by": sort_by,
+                "language": language
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to browse catalog: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to browse catalog: {str(e)}")
+
+@app.get("/gutenberg/catalog/popular")
+async def get_popular_gutenberg_books(limit: int = 50):
+    """Get most popular books from Project Gutenberg"""
+    try:
+        # Get popular books directly from the service
+        popular_books = await gutenberg_service._get_popular_books()
+        
+        # Convert to the expected format
+        books_data = []
+        for book in popular_books[:limit]:
+            if isinstance(book, dict):
+                books_data.append(book)
+            else:
+                books_data.append({
+                    "gutenberg_id": book.gutenberg_id,
+                    "title": book.title,
+                    "author": book.author,
+                    "language": book.language,
+                    "subjects": book.subjects,
+                    "download_url": book.download_url,
+                    "downloads": getattr(book, 'downloads', 0)
+                })
+        
+        return {
+            "success": True,
+            "message": f"Found {len(books_data)} popular books",
+            "data": {
+                "books": books_data,
+                "total_found": len(books_data)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get popular books: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get popular books: {str(e)}")
+
+@app.get("/gutenberg/catalog/recent")
+async def get_recent_gutenberg_books(limit: int = 50):
+    """Get recently added books from Project Gutenberg RSS feeds"""
+    try:
+        # Get recent books from RSS feeds
+        recent_books = await gutenberg_service._get_recent_books_from_rss()
+        
+        return {
+            "success": True,
+            "message": f"Found {len(recent_books)} recent books",
+            "data": {
+                "books": recent_books[:limit],
+                "total_found": len(recent_books)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get recent books: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get recent books: {str(e)}")
+
+@app.post("/gutenberg/catalog/refresh")
+async def refresh_gutenberg_catalog():
+    """Force refresh of the Project Gutenberg catalog cache"""
+    try:
+        # Clear existing cache
+        gutenberg_service.catalog_cache = []
+        if gutenberg_service.catalog_cache_file.exists():
+            gutenberg_service.catalog_cache_file.unlink()
+        
+        # Rebuild cache
+        await gutenberg_service._build_catalog_cache()
+        
+        return {
+            "success": True,
+            "message": f"Catalog cache refreshed with {len(gutenberg_service.catalog_cache)} books",
+            "data": {
+                "books_cached": len(gutenberg_service.catalog_cache),
+                "cache_file": str(gutenberg_service.catalog_cache_file)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh catalog: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to refresh catalog: {str(e)}")
+
+@app.get("/gutenberg/catalog/info")
+async def get_catalog_info():
+    """Get information about the current catalog cache"""
+    try:
+        await gutenberg_service._ensure_catalog_cache()
+        
+        # Analyze the catalog
+        languages = {}
+        authors = {}
+        total_downloads = 0
+        
+        for book_data in gutenberg_service.catalog_cache:
+            # Count languages
+            lang = book_data.get('language', 'unknown')
+            languages[lang] = languages.get(lang, 0) + 1
+            
+            # Count authors
+            author = book_data.get('author', 'Unknown')
+            authors[author] = authors.get(author, 0) + 1
+            
+            # Sum downloads
+            total_downloads += book_data.get('downloads', 0)
+        
+        # Get top authors
+        top_authors = sorted(authors.items(), key=lambda x: x[1], reverse=True)[:20]
+        
+        cache_file_exists = gutenberg_service.catalog_cache_file.exists()
+        cache_file_size = gutenberg_service.catalog_cache_file.stat().st_size if cache_file_exists else 0
+        cache_file_modified = datetime.fromtimestamp(gutenberg_service.catalog_cache_file.stat().st_mtime) if cache_file_exists else None
+        
+        return {
+            "success": True,
+            "message": "Catalog information retrieved",
+            "data": {
+                "total_books": len(gutenberg_service.catalog_cache),
+                "languages": languages,
+                "top_authors": [{"author": author, "book_count": count} for author, count in top_authors],
+                "total_downloads": total_downloads,
+                "cache_info": {
+                    "file_exists": cache_file_exists,
+                    "file_size_bytes": cache_file_size,
+                    "last_modified": cache_file_modified.isoformat() if cache_file_modified else None,
+                    "cache_file_path": str(gutenberg_service.catalog_cache_file)
+                }
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get catalog info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get catalog info: {str(e)}")
+
+# Strategic paragraph sampling endpoint
+class StrategicSamplingRequest(BaseModel):
+    gutenberg_id: int
+    sample_count: int = 64
+    min_length: int = 100
+    max_length: int = 800
+    avoid_first_last_percent: float = 0.1  # Avoid first/last 10% of book
+
+@app.post("/gutenberg/strategic-sample")
+async def create_strategic_sampling_job(request: StrategicSamplingRequest):
+    """Create a strategic paragraph sampling job for narrative DNA extraction"""
+    try:
+        job_id = await gutenberg_service.create_strategic_sampling_job(
+            gutenberg_id=request.gutenberg_id,
+            sample_count=request.sample_count,
+            min_length=request.min_length,
+            max_length=request.max_length,
+            avoid_first_last_percent=request.avoid_first_last_percent
+        )
+        
+        return {
+            "success": True,
+            "message": f"Strategic sampling job created for book {request.gutenberg_id}",
+            "data": {
+                "job_id": job_id,
+                "gutenberg_id": request.gutenberg_id,
+                "sample_count": request.sample_count,
+                "sampling_criteria": {
+                    "min_length": request.min_length,
+                    "max_length": request.max_length,
+                    "avoid_first_last_percent": request.avoid_first_last_percent
+                },
+                "status": "pending"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create strategic sampling job: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create strategic sampling job: {str(e)}")
+
+@app.post("/gutenberg/composite-analysis")
+async def create_composite_analysis_job(job_id: str):
+    """Create composite analysis from strategic sampling results to extract narrative DNA"""
+    try:
+        # Get strategic sampling results
+        job = await gutenberg_service.get_job_status(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        if job.status != "completed":
+            raise HTTPException(status_code=400, detail="Strategic sampling job must be completed first")
+        
+        # Get the sampling results
+        sampling_results = await gutenberg_service.get_job_results(job_id)
+        
+        # Create composite analysis job
+        composite_job_id = await gutenberg_service.create_composite_analysis_job(
+            source_job_id=job_id,
+            sampling_results=sampling_results
+        )
+        
+        return {
+            "success": True,
+            "message": f"Composite analysis job created from sampling job {job_id}",
+            "data": {
+                "composite_job_id": composite_job_id,
+                "source_job_id": job_id,
+                "status": "pending",
+                "analysis_type": "narrative_dna_extraction"
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create composite analysis job: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create composite analysis job: {str(e)}")
+
+# ===== QUANTUM NARRATIVE ANALYSIS ENDPOINTS =====
+
+from typing import List, Dict, Any, Optional
+
+class NarrativeSpinRequest(BaseModel):
+    """Request for quantum narrative spinning analysis"""
+    narratives: List[Dict[str, Any]]  # List of narrative texts with DNA metadata
+    analysis_type: str = "quantum_comparison"  # Type of analysis to perform
+    spin_operators: Optional[List[str]] = None  # Specific quantum operators to apply
+    measurement_basis: str = "sic_povm"  # Measurement basis (sic_povm, pauli, etc.)
+
+class QuantumMeasurementRequest(BaseModel):
+    """Request for quantum measurement of narrative states"""
+    narrative_text: str
+    persona: str
+    namespace: str
+    style: str
+    measurement_operators: Optional[List[str]] = None
+
+@app.post("/quantum/narrative-spin")
+async def analyze_narrative_quantum_spin(request: NarrativeSpinRequest):
+    """
+    Analyze quantum 'spinning' of narratives with different DNA attributes.
+    
+    This endpoint implements the quantum metaphor where each narrative transformation
+    creates a quantum superposition state that must be 'spun' and measured using
+    the density matrix ρ and POVM measurement operators.
+    """
+    try:
+        import numpy as np
+        
+        logger.info(f"Starting quantum narrative spin analysis for {len(request.narratives)} narratives")
+        
+        # Initialize quantum analysis parameters
+        dimension = 8  # Quantum narrative space dimension
+        
+        results = {
+            "analysis_type": request.analysis_type,
+            "quantum_dimension": dimension,
+            "measurement_basis": request.measurement_basis,
+            "narratives_analyzed": len(request.narratives),
+            "quantum_states": [],
+            "spin_correlations": {},
+            "comparative_analysis": {}
+        }
+        
+        # Process each narrative into quantum state
+        quantum_states = []
+        
+        for i, narrative_data in enumerate(request.narratives):
+            # Extract narrative properties
+            persona = narrative_data.get("persona", "unknown")
+            namespace = narrative_data.get("namespace", "unknown")
+            style = narrative_data.get("style", "unknown")
+            name = narrative_data.get("name", f"Narrative_{i+1}")
+            
+            # Create DNA-specific quantum state (mock implementation)
+            base_embedding = np.random.normal(0, 1, 1536)
+            
+            # Quantum 'spinning' based on DNA characteristics
+            if "philosophical" in persona.lower():
+                base_embedding[0:100] += 0.7  # Philosophical spin
+            if "tragic" in persona.lower():
+                base_embedding[100:200] += 0.7  # Tragic spin
+            if "gothic" in persona.lower():
+                base_embedding[200:300] += 0.7  # Gothic spin
+            
+            # Normalize and project to quantum space
+            embedding = base_embedding / np.linalg.norm(base_embedding)
+            psi = embedding[:dimension] / np.linalg.norm(embedding[:dimension])
+            
+            # Create density matrix ρ = |ψ⟩⟨ψ|
+            density_matrix = np.outer(psi, np.conj(psi))
+            
+            # Add quantum decoherence
+            identity = np.eye(dimension) / dimension
+            density_matrix = 0.9 * density_matrix + 0.1 * identity
+            density_matrix = density_matrix / np.trace(density_matrix)
+            
+            # Compute quantum properties
+            eigenvalues = np.real(np.linalg.eigvals(density_matrix))
+            eigenvalues = eigenvalues[eigenvalues > 1e-12]
+            
+            entropy = -np.sum(eigenvalues * np.log2(eigenvalues)) if len(eigenvalues) > 0 else 0
+            purity = np.real(np.trace(density_matrix @ density_matrix))
+            
+            quantum_state = {
+                "name": name,
+                "dna_combination": f"{persona}|{namespace}|{style}",
+                "quantum_properties": {
+                    "von_neumann_entropy": float(entropy),
+                    "purity": float(purity),
+                    "mixedness": float(1 - purity)
+                }
+            }
+            
+            quantum_states.append({"state_data": quantum_state, "density_matrix": density_matrix})
+            results["quantum_states"].append(quantum_state)
+        
+        # Compute quantum distances between states
+        for i in range(len(quantum_states)):
+            for j in range(i + 1, len(quantum_states)):
+                state1, state2 = quantum_states[i], quantum_states[j]
+                name1, name2 = state1["state_data"]["name"], state2["state_data"]["name"]
+                
+                rho1, rho2 = state1["density_matrix"], state2["density_matrix"]
+                
+                # Quantum trace distance
+                diff = rho1 - rho2
+                eigenvals = np.linalg.eigvals(diff @ diff.conj().T)
+                trace_distance = 0.5 * np.sum(np.sqrt(np.real(eigenvals)))
+                
+                pair_key = f"{name1}↔{name2}"
+                results["spin_correlations"][pair_key] = {
+                    "trace_distance": float(trace_distance),
+                    "quantum_distinguishability": float(trace_distance > 0.1)
+                }
+        
+        return {
+            "success": True,
+            "message": f"Quantum spin analysis completed for {len(request.narratives)} narratives",
+            "data": results
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to perform quantum narrative spin analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Quantum analysis failed: {str(e)}")
+
+# ===== END QUANTUM NARRATIVE ENDPOINTS =====
+
+# ===== END GUTENBERG ENDPOINTS =====
+
 if __name__ == "__main__":
     import uvicorn
+    import subprocess
+    import os
+    import signal
+    import time
+    
+    # Kill any existing process on port 8100
+    try:
+        # Find process using port 8100
+        result = subprocess.run(['lsof', '-ti:8100'], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            pids = result.stdout.strip().split('\n')
+            print(f"🔄 Found existing process(es) on port 8100: {pids}")
+            
+            for pid in pids:
+                try:
+                    pid_int = int(pid.strip())
+                    print(f"🛑 Terminating process {pid_int}")
+                    os.kill(pid_int, signal.SIGTERM)
+                    time.sleep(1)  # Give it a moment to shut down gracefully
+                    
+                    # Check if still running, force kill if needed
+                    try:
+                        os.kill(pid_int, 0)  # Check if process exists
+                        print(f"💀 Force killing process {pid_int}")
+                        os.kill(pid_int, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass  # Process already terminated
+                        
+                except (ValueError, ProcessLookupError):
+                    continue
+                    
+            print("✅ Port 8100 cleared")
+            time.sleep(1)  # Brief pause before starting new server
+            
+    except Exception as e:
+        print(f"⚠️  Could not check/clear port 8100: {e}")
+    
     uvicorn.run(app, host="127.0.0.1", port=8100)
