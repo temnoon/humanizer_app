@@ -1,0 +1,300 @@
+<div class="transformation-interface">
+  <!-- Header Section -->
+  <div class="bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg p-8 mb-8">
+    <div class="flex items-center mb-4">
+      <%= link_to conversation_path(@conversation), class: "text-white/80 hover:text-white mr-4" do %>
+        ← Back to Conversation
+      <% end %>
+    </div>
+    <h1 class="text-4xl font-bold mb-4">🔮 Transform Conversation</h1>
+    <p class="text-xl opacity-90">Apply allegory engine transformations to: "<%= @conversation.title %>"</p>
+    <p class="text-sm mt-2 opacity-75">
+      Configure semantic measurement protocols and attribute operators for narrative transformation
+    </p>
+  </div>
+
+  <!-- Transformation Configuration -->
+  <%= form_with url: transform_conversation_path(@conversation), method: :post, 
+                local: true, 
+                id: "transformation-form",
+                class: "space-y-8",
+                data: { turbo: true } do |form| %>
+    
+    <!-- Quick Preset Selection -->
+    <div class="allegory-card">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">🎨 Transformation Presets</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
+        <% [
+          { id: 'academic', name: 'Academic', icon: '🎓', namespace: 'Scientific Domain', persona: 'Academic Scholar', style: 'Academic Precision' },
+          { id: 'storyteller', name: 'Storyteller', icon: '📚', namespace: 'Literary Universe', persona: 'Master Storyteller', style: 'Narrative Drama' },
+          { id: 'philosopher', name: 'Philosopher', icon: '🤔', namespace: 'Philosophical Realm', persona: 'Deep Philosopher', style: 'Poetic Expression' },
+          { id: 'scientist', name: 'Scientist', icon: '🔬', namespace: 'Scientific Domain', persona: 'Research Scientist', style: 'Technical Detail' },
+          { id: 'mythic', name: 'Mythic', icon: '🌟', namespace: 'Mythological Space', persona: 'Creative Artist', style: 'Poetic Expression' },
+          { id: 'conversational', name: 'Casual', icon: '💬', namespace: 'Universal Reality', persona: 'Neutral Observer', style: 'Conversational Ease' }
+        ].each do |preset| %>
+          <div class="preset-card border border-gray-200 rounded-lg p-3 hover:border-purple-300 cursor-pointer transition-colors" 
+               data-preset="<%= preset[:id] %>">
+            <div class="text-center mb-2">
+              <div class="text-2xl"><%= preset[:icon] %></div>
+              <div class="text-sm font-medium text-gray-800"><%= preset[:name] %></div>
+            </div>
+            <div class="text-xs text-gray-500">
+              <div><%= preset[:namespace] %></div>
+              <div><%= preset[:persona] %></div>
+              <div><%= preset[:style] %></div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <!-- Custom Attribute Configuration -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- Allegory Operators -->
+      <div class="allegory-card">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">🎭 Allegory Operators</h3>
+        
+        <!-- Namespace Operator -->
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            🌍 Namespace (Ω) - Universe of References
+          </label>
+          <%= form.select :namespace, 
+                          options_for_select([
+                            ['Universal Reality', 'universal'],
+                            ['Scientific Domain', 'scientific'],
+                            ['Mythological Space', 'mythological'],
+                            ['Literary Universe', 'literary'],
+                            ['Philosophical Realm', 'philosophical'],
+                            ['Historical Context', 'historical']
+                          ], 'universal'),
+                          {},
+                          { class: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent" } %>
+        </div>
+
+        <!-- Persona Operator -->
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            👤 Persona (Ψ) - Worldview and Perspective
+          </label>
+          <%= form.select :persona,
+                          options_for_select([
+                            ['Neutral Observer', 'neutral'],
+                            ['Academic Scholar', 'scholar'],
+                            ['Master Storyteller', 'storyteller'],
+                            ['Research Scientist', 'scientist'],
+                            ['Deep Philosopher', 'philosopher'],
+                            ['Creative Artist', 'artist']
+                          ], 'neutral'),
+                          {},
+                          { class: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent" } %>
+        </div>
+
+        <!-- Style Operator -->
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            ✍️ Style (Σ) - Linguistic Approach
+          </label>
+          <%= form.select :style,
+                          options_for_select([
+                            ['Natural Flow', 'natural'],
+                            ['Academic Precision', 'academic'],
+                            ['Narrative Drama', 'narrative'],
+                            ['Poetic Expression', 'poetic'],
+                            ['Technical Detail', 'technical'],
+                            ['Conversational Ease', 'conversational']
+                          ], 'natural'),
+                          {},
+                          { class: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent" } %>
+        </div>
+
+        <!-- Transformation Intensity -->
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            ⚡ Transformation Intensity
+          </label>
+          <%= form.range_field :intensity, 
+                               min: 0.1, max: 1.0, step: 0.1, value: 0.5,
+                               class: "w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" %>
+          <div class="flex justify-between text-xs text-gray-500 mt-1">
+            <span>Subtle</span>
+            <span>Moderate</span>
+            <span>Profound</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transformation Options -->
+      <div class="allegory-card">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">⚙️ Transformation Options</h3>
+        
+        <!-- Message Selection -->
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            📝 Messages to Transform
+          </label>
+          <div class="space-y-2 max-h-48 overflow-y-auto border border-gray-200 rounded-md p-3">
+            <%= form.check_box :transform_all, { checked: true, class: "mr-2" } %>
+            <%= form.label :transform_all, "Transform all messages", class: "font-medium text-gray-700" %>
+            
+            <div class="pl-6 space-y-1 text-sm">
+              <% @conversation.messages.order(:message_index).limit(5).each do |message| %>
+                <div class="flex items-start space-x-2">
+                  <input type="checkbox" name="message_ids[]" value="<%= message.id %>" checked class="mt-1">
+                  <div class="flex-1">
+                    <span class="font-medium capitalize"><%= message.role %></span>: 
+                    <span class="text-gray-600">
+                      <%= truncate(message.content, length: 60) %>
+                    </span>
+                  </div>
+                </div>
+              <% end %>
+              <% if @conversation.message_count > 5 %>
+                <div class="text-gray-500 italic">
+                  ... and <%= @conversation.message_count - 5 %> more messages
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+
+        <!-- Output Options -->
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            📤 Output Format
+          </label>
+          <div class="space-y-2">
+            <%= form.radio_button :output_format, 'conversation', { checked: true, class: "mr-2" } %>
+            <%= form.label :output_format_conversation, "New transformed conversation", class: "text-gray-700" %>
+            
+            <%= form.radio_button :output_format, 'book', { class: "mr-2" } %>
+            <%= form.label :output_format_book, "Create book from transformation", class: "text-gray-700" %>
+            
+            <%= form.radio_button :output_format, 'comparison', { class: "mr-2" } %>
+            <%= form.label :output_format_comparison, "Side-by-side comparison", class: "text-gray-700" %>
+          </div>
+        </div>
+
+        <!-- Advanced Options -->
+        <div class="border-t pt-4">
+          <h4 class="font-medium text-gray-800 mb-3">🔬 Advanced Options</h4>
+          
+          <%= form.check_box :preserve_structure, { class: "mr-2" } %>
+          <%= form.label :preserve_structure, "Preserve conversation structure", class: "text-sm text-gray-700" %>
+          
+          <%= form.check_box :include_analysis, { checked: true, class: "mr-2 mt-2" } %>
+          <%= form.label :include_analysis, "Include semantic analysis", class: "text-sm text-gray-700" %>
+          
+          <%= form.check_box :enable_local_basis, { class: "mr-2 mt-2" } %>
+          <%= form.label :enable_local_basis, "Use adaptive local meaning basis (experimental)", class: "text-sm text-gray-700" %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Section -->
+    <div class="allegory-card">
+      <h3 class="text-xl font-bold text-gray-800 mb-4">👁️ Live Preview</h3>
+      <div id="transformation-preview" class="bg-gray-50 rounded-lg p-4 min-h-32">
+        <div class="text-center text-gray-500 py-8">
+          <div class="text-4xl mb-4">⚛️</div>
+          <p>Configure transformation parameters to see a preview</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex justify-center gap-4">
+      <%= form.submit "🚀 Run Transformation", 
+                      class: "bg-purple-600 text-white px-8 py-3 rounded-lg hover:bg-purple-700 transition-colors text-lg font-medium" %>
+      
+      <%= link_to "💾 Save Configuration", "#", 
+                  class: "bg-gray-500 text-white px-6 py-3 rounded-lg hover:bg-gray-600 transition-colors",
+                  onclick: "saveConfiguration()" %>
+      
+      <%= link_to "Cancel", conversation_path(@conversation),
+                  class: "border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 transition-colors" %>
+    </div>
+  <% end %>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.getElementById('transformation-form');
+  if (!form) return;
+
+  // Preset configuration
+  const presets = {
+    'academic': { namespace: 'scientific', persona: 'scholar', style: 'academic' },
+    'storyteller': { namespace: 'literary', persona: 'storyteller', style: 'narrative' },
+    'philosopher': { namespace: 'philosophical', persona: 'philosopher', style: 'poetic' },
+    'scientist': { namespace: 'scientific', persona: 'scientist', style: 'technical' },
+    'mythic': { namespace: 'mythological', persona: 'artist', style: 'poetic' },
+    'conversational': { namespace: 'universal', persona: 'neutral', style: 'conversational' }
+  };
+
+  // Handle preset selection with event delegation
+  document.addEventListener('click', function(e) {
+    const presetCard = e.target.closest('.preset-card');
+    if (!presetCard) return;
+    
+    const presetId = presetCard.dataset.preset;
+    if (!presetId || !presets[presetId]) return;
+    
+    // Remove previous selection
+    document.querySelectorAll('.preset-card').forEach(card => {
+      card.classList.remove('border-purple-500', 'bg-purple-50');
+    });
+    
+    // Highlight selected
+    presetCard.classList.add('border-purple-500', 'bg-purple-50');
+    
+    // Load preset configuration
+    const config = presets[presetId];
+    const namespaceSelect = document.querySelector('select[name="namespace"]');
+    const personaSelect = document.querySelector('select[name="persona"]');
+    const styleSelect = document.querySelector('select[name="style"]');
+    
+    if (namespaceSelect) namespaceSelect.value = config.namespace;
+    if (personaSelect) personaSelect.value = config.persona;
+    if (styleSelect) styleSelect.value = config.style;
+    
+    updatePreview();
+  });
+
+  // Handle form input changes
+  const inputs = form.querySelectorAll('select, input[type="range"], input[type="checkbox"]');
+  inputs.forEach(input => {
+    input.addEventListener('change', updatePreview);
+  });
+
+  function updatePreview() {
+    const preview = document.getElementById('transformation-preview');
+    if (!preview) return;
+    
+    preview.innerHTML = '<div class="text-center text-gray-500 py-4">⏳ Generating preview...</div>';
+    
+    // Simulate preview update
+    setTimeout(() => {
+      const namespace = document.querySelector('select[name="namespace"]')?.value || 'universal';
+      const persona = document.querySelector('select[name="persona"]')?.value || 'neutral';
+      const style = document.querySelector('select[name="style"]')?.value || 'natural';
+      
+      preview.innerHTML = `
+        <div class="text-gray-700 dark:text-gray-300">
+          <p class="mb-2"><strong>Preview Configuration:</strong></p>
+          <p>Namespace: <span class="text-purple-600 dark:text-purple-400">${namespace}</span></p>
+          <p>Persona: <span class="text-purple-600 dark:text-purple-400">${persona}</span></p>
+          <p>Style: <span class="text-purple-600 dark:text-purple-400">${style}</span></p>
+        </div>
+      `;
+    }, 500);
+  }
+
+  // Initial preview update
+  updatePreview();
+});
+
+function saveConfiguration() {
+  alert('Configuration saved! (Feature to be implemented)');
+}
+</script>

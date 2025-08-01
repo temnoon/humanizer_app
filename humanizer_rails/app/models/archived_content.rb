@@ -25,14 +25,15 @@ class ArchivedContent < ApplicationRecord
     annotation: 'annotation'
   }, _prefix: :is
 
-  enum processing_status: {
-    pending: 'pending',
-    processing: 'processing',
-    completed: 'completed',
-    failed: 'failed',
-    embedded: 'embedded',
-    analyzed: 'analyzed'
-  }, _prefix: :status
+  # Commented out - column doesn't exist in database
+  # enum processing_status: {
+  #   pending: 'pending',
+  #   processing: 'processing',
+  #   completed: 'completed',
+  #   failed: 'failed',
+  #   embedded: 'embedded',
+  #   analyzed: 'analyzed'
+  # }, _prefix: :status
 
   # Associations
   belongs_to :parent_conversation, class_name: 'ArchivedContent', foreign_key: 'parent_id', optional: true
@@ -44,7 +45,7 @@ class ArchivedContent < ApplicationRecord
   scope :by_author, ->(author) { where(author: author) }
   scope :by_source, ->(source_type) { where(source_type: source_type) }
   scope :recent, -> { order(timestamp: :desc) }
-  scope :processed, -> { where.not(processing_status: 'pending') }
+  # scope :processed, -> { where.not(processing_status: 'pending') }
   scope :high_quality, -> { where('content_quality_score > ?', 0.7) }
   
   # Date range scopes
@@ -62,17 +63,17 @@ class ArchivedContent < ApplicationRecord
   before_save :update_word_count
   before_save :extract_search_terms
 
-  # Full-text search using PostgreSQL
-  include PgSearch::Model
-  pg_search_scope :search_content,
-    against: [:title, :body_text],
-    using: {
-      tsearch: {
-        prefix: true,
-        any_word: true,
-        dictionary: "english"
-      }
-    }
+  # Full-text search using PostgreSQL (disabled - pg_search gem not available)
+  # include PgSearch::Model
+  # pg_search_scope :search_content,
+  #   against: [:title, :body_text],
+  #   using: {
+  #     tsearch: {
+  #       prefix: true,
+  #       any_word: true,
+  #       dictionary: "english"
+  #     }
+  #   }
 
   # Class methods
   class << self

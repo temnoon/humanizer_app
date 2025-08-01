@@ -1,0 +1,30 @@
+<div class="flex space-x-2">
+  <!-- Previous Page -->
+  <% if pagination[:page] > 1 %>
+    <% prev_params = filter_params.merge(page: pagination[:page] - 1) %>
+    <%= link_to "← Previous", 
+                conversations_path(prev_params),
+                class: "px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors" %>
+  <% end %>
+  
+  <!-- Page Numbers -->
+  <% page_range = [[pagination[:page] - 2, 1].max, [pagination[:page] + 2, pagination[:pages]].min] %>
+  <% (page_range[0]..page_range[1]).each do |page_num| %>
+    <% if page_num == pagination[:page] %>
+      <span class="px-4 py-2 bg-purple-600 text-white rounded-lg"><%= page_num %></span>
+    <% else %>
+      <% page_params = filter_params.merge(page: page_num) %>
+      <%= link_to page_num,
+                  conversations_path(page_params),
+                  class: "px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors" %>
+    <% end %>
+  <% end %>
+  
+  <!-- Next Page -->
+  <% if pagination[:page] < pagination[:pages] %>
+    <% next_params = filter_params.merge(page: pagination[:page] + 1) %>
+    <%= link_to "Next →",
+                conversations_path(next_params),
+                class: "px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors" %>
+  <% end %>
+</div>

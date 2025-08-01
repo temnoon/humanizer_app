@@ -1,0 +1,74 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* Custom styles for Allegory Engine interface */
+.allegory-card {
+  @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow border border-gray-200 dark:border-gray-700;
+}
+
+.allegory-card h3 {
+  @apply text-gray-900 dark:text-white;
+}
+
+.allegory-card .text-gray-600 {
+  @apply text-gray-600 dark:text-gray-300;
+}
+
+.allegory-card .text-gray-500 {
+  @apply text-gray-500 dark:text-gray-400;
+}
+
+.conversation-item {
+  @apply border-l-4 border-blue-500 pl-4 py-2 hover:bg-gray-50 cursor-pointer transition-colors;
+}
+
+.attribute-badge {
+  @apply inline-block bg-purple-100 text-purple-800 text-sm px-2 py-1 rounded-full mr-2 mb-2;
+}
+
+.projection-status {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-pending {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-processing {
+  @apply bg-blue-100 text-blue-800;
+}
+
+.status-completed {
+  @apply bg-green-100 text-green-800;
+}
+
+.status-error {
+  @apply bg-red-100 text-red-800;
+}
+
+/* Quantum measurement visualization */
+.semantic-probe {
+  @apply relative p-4 border border-gray-300 rounded-lg bg-gradient-to-br from-blue-50 to-purple-50;
+}
+
+.probe-value {
+  @apply text-lg font-semibold text-gray-800;
+}
+
+.coherence-meter {
+  @apply w-full bg-gray-200 rounded-full h-2.5;
+}
+
+.coherence-bar {
+  @apply h-2.5 rounded-full transition-all duration-500;
+}
+
+/* Message threading visualization */
+.message-thread {
+  @apply border-l-2 border-gray-300 ml-4 pl-4;
+}
+
+.message-branch {
+  @apply relative before:content-[''] before:absolute before:left-[-1rem] before:top-4 before:w-4 before:h-0.5 before:bg-gray-300;
+}

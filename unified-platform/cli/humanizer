@@ -1,0 +1,713 @@
+#!/usr/bin/env python3
+"""
+Humanizer CLI - Command Line Interface for Unified Platform
+A comprehensive CLI tool for testing and managing the Humanizer API
+"""
+import argparse
+import asyncio
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Dict, Any, Optional, List
+import httpx
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Prompt, Confirm
+from rich.syntax import Syntax
+import tempfile
+
+# Add the unified platform to path
+sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).parent.parent / "shared"))
+sys.path.append(str(Path(__file__).parent.parent / "api"))
+
+try:
+    from simple_config import config
+    keychain_service = None  # Skip keychain for now
+except ImportError:
+    # Create minimal config inline
+    class SimpleConfig:
+        API_BASE_URL = "http://localhost:8100"
+        PROVIDERS = ["openai", "anthropic", "deepseek", "groq", "google", "ollama", "together"]
+    config = SimpleConfig()
+    keychain_service = None
+
+console = Console()
+
+# Default API configuration
+DEFAULT_API_URL = "http://localhost:8100"
+DEFAULT_TIMEOUT = 30
+
+
+class HumanizerCLI:
+    """Main CLI interface for Humanizer API"""
+    
+    def __init__(self, api_url: str = DEFAULT_API_URL):
+        self.api_url = api_url
+        self.client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+        self.auth_token = None
+        
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.client.aclose()
+    
+    # Authentication commands
+    async def login(self, username: str, password: str) -> bool:
+        """Login to the API and store auth token"""
+        try:
+            response = await self.client.post(
+                f"{self.api_url}/api/v1/auth/login",
+                json={"username": username, "password": password}
+            )
+            
+            if response.status_code in [200, 201]:
+                data = response.json()
+                self.auth_token = data.get("access_token")
+                if self.auth_token:
+                    console.print("✅ Login successful", style="green")
+                    return True
+            
+            console.print(f"❌ Login failed: {response.status_code}", style="red")
+            return False
+            
+        except Exception as e:
+            console.print(f"❌ Login error: {e}", style="red")
+            return False
+    
+    def _get_auth_headers(self) -> Dict[str, str]:
+        """Get authentication headers"""
+        headers = {}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+        return headers
+    
+    # Health and status commands
+    async def health_check(self) -> Dict[str, Any]:
+        """Check API health status"""
+        try:
+            response = await self.client.get(f"{self.api_url}/health")
+            
+            if response.status_code == 200:
+                health_data = response.json()
+                
+                # Create status table
+                table = Table(title="🏥 API Health Status")
+                table.add_column("Component", style="cyan")
+                table.add_column("Status", justify="center")
+                table.add_column("Details", style="dim")
+                
+                # Overall status
+                overall_status = "🟢 Healthy" if health_data.get("status") == "healthy" else "🔴 Unhealthy"
+                table.add_row("API", overall_status, f"Uptime: {health_data.get('uptime_seconds', 0):.0f}s")
+                
+                # Dependencies
+                dependencies = health_data.get("dependencies", {})
+                for dep_name, dep_status in dependencies.items():
+                    status_icon = "🟢" if "healthy" in dep_status.lower() else "🔴"
+                    table.add_row(dep_name.title(), f"{status_icon} {dep_status}", "")
+                
+                console.print(table)
+                return health_data
+            else:
+                console.print(f"❌ Health check failed: {response.status_code}", style="red")
+                return {}
+                
+        except httpx.ConnectError:
+            console.print("❌ Cannot connect to API. Is the server running?", style="red")
+            console.print(f"   Trying to connect to: {self.api_url}", style="dim")
+            return {}
+        except Exception as e:
+            console.print(f"❌ Health check error: {e}", style="red")
+            return {}
+    
+    # Content management commands
+    async def ingest_content(self, text: str = None, file_path: str = None, 
+                           content_type: str = "text", source: str = "cli", 
+                           title: str = None, tags: List[str] = None) -> Optional[str]:
+        """Ingest content into the platform"""
+        
+        try:
+            data = {
+                "content_type": content_type,
+                "source": source,
+            }
+            
+            if title:
+                data["title"] = title
+            
+            if tags:
+                data["tags"] = ",".join(tags)
+            
+            files = {}
+            
+            if file_path:
+                if not os.path.exists(file_path):
+                    console.print(f"❌ File not found: {file_path}", style="red")
+                    return None
+                
+                with open(file_path, 'rb') as f:
+                    files["file"] = (os.path.basename(file_path), f.read())
+                    
+            elif text:
+                data["text_data"] = text
+            else:
+                console.print("❌ Either text or file_path must be provided", style="red")
+                return None
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Ingesting content...", total=None)
+                
+                if files:
+                    response = await self.client.post(
+                        f"{self.api_url}/api/v1/content/ingest",
+                        data=data,
+                        files=files,
+                        headers=self._get_auth_headers()
+                    )
+                else:
+                    response = await self.client.post(
+                        f"{self.api_url}/api/v1/content/ingest",
+                        data=data,
+                        headers=self._get_auth_headers()
+                    )
+            
+            if response.status_code in [200, 201]:
+                result = response.json()
+                content_id = result.get("data", {}).get("content_id")
+                
+                console.print("✅ Content ingested successfully", style="green")
+                console.print(f"   Content ID: {content_id}", style="dim")
+                
+                # Show processing details
+                data = result.get("data", {})
+                if data:
+                    details_table = Table(title="📊 Processing Details")
+                    details_table.add_column("Metric", style="cyan")
+                    details_table.add_column("Value")
+                    
+                    for key, value in data.items():
+                        if key != "content_id":
+                            details_table.add_row(key.replace("_", " ").title(), str(value))
+                    
+                    console.print(details_table)
+                
+                return content_id
+            else:
+                console.print(f"❌ Content ingestion failed: {response.status_code}", style="red")
+                try:
+                    error_data = response.json()
+                    console.print(f"   Error: {error_data.get('message', 'Unknown error')}", style="dim")
+                except:
+                    console.print(f"   Response: {response.text[:200]}", style="dim")
+                return None
+                
+        except Exception as e:
+            console.print(f"❌ Content ingestion error: {e}", style="red")
+            return None
+    
+    async def search_content(self, query: str, search_type: str = "semantic", 
+                           limit: int = 10, content_types: List[str] = None) -> List[Dict]:
+        """Search for content"""
+        
+        try:
+            search_data = {
+                "query": query,
+                "limit": limit
+            }
+            
+            if content_types:
+                search_data["content_types"] = content_types
+            
+            endpoint = f"/api/v1/search/{search_type}"
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"Searching ({search_type})...", total=None)
+                
+                response = await self.client.post(
+                    f"{self.api_url}{endpoint}",
+                    json=search_data,
+                    headers=self._get_auth_headers()
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                results = result.get("results", [])
+                
+                console.print(f"✅ Found {len(results)} results in {result.get('query_time_ms', 0):.1f}ms", 
+                            style="green")
+                
+                # Display results table
+                if results:
+                    results_table = Table(title=f"🔍 Search Results for '{query}'")
+                    results_table.add_column("Rank", width=6)
+                    results_table.add_column("Title", style="cyan")
+                    results_table.add_column("Score", width=8)
+                    results_table.add_column("Type", width=10)
+                    results_table.add_column("Preview", style="dim")
+                    
+                    for result_item in results[:limit]:
+                        content = result_item.get("content", {})
+                        title = content.get("metadata", {}).get("title", "Untitled")
+                        score = f"{result_item.get('similarity_score', 0):.3f}"
+                        content_type = content.get("content_type", "unknown")
+                        preview = content.get("data", "")[:100] + "..." if len(content.get("data", "")) > 100 else content.get("data", "")
+                        
+                        results_table.add_row(
+                            str(result_item.get("rank", "")),
+                            title,
+                            score,
+                            content_type,
+                            preview
+                        )
+                    
+                    console.print(results_table)
+                
+                return results
+            else:
+                console.print(f"❌ Search failed: {response.status_code}", style="red")
+                return []
+                
+        except Exception as e:
+            console.print(f"❌ Search error: {e}", style="red")
+            return []
+    
+    # Transformation commands
+    async def transform_content(self, text: str, engine: str = "lpe", 
+                              persona: str = None, namespace: str = None, 
+                              style: str = None) -> Optional[Dict]:
+        """Transform content using specified engine"""
+        
+        try:
+            transform_data = {
+                "text": text,
+                "engine": engine
+            }
+            
+            attributes = {}
+            if persona:
+                attributes["persona"] = persona
+            if namespace:
+                attributes["namespace"] = namespace
+            if style:
+                attributes["style"] = style
+            
+            if attributes:
+                transform_data["attributes"] = attributes
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"Transforming with {engine.upper()}...", total=None)
+                
+                response = await self.client.post(
+                    f"{self.api_url}/api/v1/transform/transform",
+                    json=transform_data,
+                    headers=self._get_auth_headers()
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                console.print("✅ Transformation completed", style="green")
+                console.print(f"   Processing time: {result.get('processing_time_ms', 0):.1f}ms", style="dim")
+                
+                # Display transformation results
+                console.print("\n" + "="*60)
+                console.print("📝 ORIGINAL TEXT", style="bold blue")
+                console.print("="*60)
+                console.print(result.get("original_text", ""))
+                
+                console.print("\n" + "="*60)
+                console.print(f"✨ TRANSFORMED TEXT ({engine.upper()})", style="bold green")
+                console.print("="*60)
+                console.print(result.get("transformed_text", ""))
+                
+                # Show quality metrics if available
+                quality_metrics = result.get("quality_metrics", {})
+                if quality_metrics:
+                    console.print("\n📊 Quality Metrics:", style="bold")
+                    for metric, value in quality_metrics.items():
+                        if isinstance(value, (int, float)):
+                            console.print(f"   {metric}: {value:.3f}", style="dim")
+                
+                return result
+            else:
+                console.print(f"❌ Transformation failed: {response.status_code}", style="red")
+                return None
+                
+        except Exception as e:
+            console.print(f"❌ Transformation error: {e}", style="red")
+            return None
+    
+    # LLM commands  
+    async def llm_complete(self, prompt: str, model: str = None, 
+                          temperature: float = 0.7, max_tokens: int = 1000) -> Optional[str]:
+        """Get LLM completion"""
+        
+        try:
+            completion_data = {
+                "prompt": prompt,
+                "temperature": temperature,
+                "max_tokens": max_tokens
+            }
+            
+            if model:
+                completion_data["model"] = model
+            
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Getting LLM completion...", total=None)
+                
+                response = await self.client.post(
+                    f"{self.api_url}/api/v1/llm/complete",
+                    json=completion_data,
+                    headers=self._get_auth_headers()
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                console.print("✅ Completion received", style="green")
+                console.print(f"   Provider: {result.get('provider', 'unknown')}", style="dim")
+                console.print(f"   Model: {result.get('model', 'unknown')}", style="dim")
+                console.print(f"   Response time: {result.get('response_time_ms', 0):.1f}ms", style="dim")
+                
+                # Display completion
+                console.print("\n" + "="*60)
+                console.print("💬 PROMPT", style="bold blue")
+                console.print("="*60)
+                console.print(prompt)
+                
+                console.print("\n" + "="*60)
+                console.print("🤖 COMPLETION", style="bold green")
+                console.print("="*60)
+                console.print(result.get("text", ""))
+                
+                return result.get("text", "")
+            else:
+                console.print(f"❌ Completion failed: {response.status_code}", style="red")
+                return None
+                
+        except Exception as e:
+            console.print(f"❌ Completion error: {e}", style="red")
+            return None
+    
+    # Provider management commands
+    async def provider_status(self) -> None:
+        """Show LLM provider status"""
+        
+        console.print("🔍 Checking provider status...", style="blue")
+        
+        # Get keychain status
+        if keychain_service:
+            provider_status = keychain_service.get_provider_status()
+        else:
+            provider_status = {provider: {"available": False, "has_key": False} for provider in config.PROVIDERS}
+        
+        # Create provider status table
+        table = Table(title="🤖 LLM Provider Status")
+        table.add_column("Provider", style="cyan")
+        table.add_column("Has Key", justify="center")
+        table.add_column("Valid", justify="center")
+        table.add_column("Available", justify="center")
+        table.add_column("Status Message", style="dim")
+        
+        for provider, status in provider_status.items():
+            has_key_icon = "✅" if status["has_key"] else "❌"
+            valid_icon = "✅" if status["key_valid"] else ("❓" if status["has_key"] else "❌")
+            available_icon = "🟢" if status["available"] else "🔴"
+            
+            table.add_row(
+                provider.title(),
+                has_key_icon,
+                valid_icon,
+                available_icon,
+                status["status_message"]
+            )
+        
+        console.print(table)
+        
+        # Show recommendations
+        unavailable_providers = [p for p, s in provider_status.items() if not s["available"]]
+        if unavailable_providers:
+            console.print(f"\n💡 To enable more providers, add API keys with:", style="yellow")
+            console.print(f"   humanizer keys add <provider> <api_key>", style="dim")
+    
+    async def set_api_key(self, provider: str, api_key: str) -> bool:
+        """Set API key for a provider"""
+        
+        try:
+            # Store in keychain
+            if keychain_service:
+                success = keychain_service.store_api_key(provider, api_key)
+            else:
+                # Fallback: just set environment variable
+                os.environ[f"{provider.upper()}_API_KEY"] = api_key
+                success = True
+            
+            if success:
+                console.print(f"✅ API key stored for {provider}", style="green")
+                
+                # Test the key
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    console=console
+                ) as progress:
+                    task = progress.add_task("Testing API key...", total=None)
+                    
+                    if keychain_service:
+                        test_success, test_message = keychain_service.test_api_key(provider, api_key)
+                    else:
+                        test_success, test_message = True, "Keychain service not available"
+                
+                if test_success:
+                    console.print(f"✅ API key is valid: {test_message}", style="green")
+                else:
+                    console.print(f"⚠️  API key validation failed: {test_message}", style="yellow")
+                
+                return True
+            else:
+                console.print(f"❌ Failed to store API key for {provider}", style="red")
+                return False
+                
+        except Exception as e:
+            console.print(f"❌ Error setting API key: {e}", style="red")
+            return False
+    
+    # Configuration commands
+    async def show_config(self) -> None:
+        """Show current configuration"""
+        
+        config_table = Table(title="⚙️ Platform Configuration")
+        config_table.add_column("Setting", style="cyan")
+        config_table.add_column("Value", style="green")
+        
+        # API settings
+        config_table.add_row("API URL", self.api_url)
+        config_table.add_row("Default LLM Provider", config.llm.default_provider.value)
+        config_table.add_row("Fallback Providers", ", ".join([p.value for p in config.llm.fallback_providers]))
+        config_table.add_row("Max Tokens", str(config.llm.max_tokens))
+        config_table.add_row("Temperature", str(config.llm.temperature))
+        config_table.add_row("Request Timeout", f"{config.llm.timeout_seconds}s")
+        
+        console.print(config_table)
+
+
+# CLI command functions
+async def main():
+    """Main CLI entry point"""
+    
+    parser = argparse.ArgumentParser(
+        description="Humanizer CLI - Test and manage the Unified Platform API",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Health check
+  humanizer health
+  
+  # Provider status
+  humanizer providers status
+  
+  # Add API key
+  humanizer keys add openai sk-...
+  
+  # Ingest content
+  humanizer content ingest "Hello world"
+  humanizer content ingest --file document.txt
+  
+  # Search content
+  humanizer search "machine learning"
+  
+  # Transform content
+  humanizer transform "Transform this text" --engine lpe --persona academic
+  
+  # LLM completion
+  humanizer llm complete "What is artificial intelligence?"
+        """
+    )
+    
+    parser.add_argument("--api-url", default=DEFAULT_API_URL, 
+                       help=f"API base URL (default: {DEFAULT_API_URL})")
+    parser.add_argument("--verbose", "-v", action="store_true", 
+                       help="Verbose output")
+    
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # Health command
+    health_parser = subparsers.add_parser("health", help="Check API health")
+    
+    # Provider commands
+    providers_parser = subparsers.add_parser("providers", help="Manage LLM providers")
+    providers_subparsers = providers_parser.add_subparsers(dest="provider_action")
+    
+    providers_status_parser = providers_subparsers.add_parser("status", help="Show provider status")
+    
+    # Keys commands
+    keys_parser = subparsers.add_parser("keys", help="Manage API keys")
+    keys_subparsers = keys_parser.add_subparsers(dest="keys_action")
+    
+    keys_add_parser = keys_subparsers.add_parser("add", help="Add API key")
+    keys_add_parser.add_argument("provider", help="Provider name (openai, anthropic, etc.)")
+    keys_add_parser.add_argument("api_key", help="API key")
+    
+    keys_migrate_parser = keys_subparsers.add_parser("migrate", help="Migrate keys from legacy system")
+    
+    # Content commands
+    content_parser = subparsers.add_parser("content", help="Manage content")
+    content_subparsers = content_parser.add_subparsers(dest="content_action")
+    
+    content_ingest_parser = content_subparsers.add_parser("ingest", help="Ingest content")
+    content_ingest_parser.add_argument("text", nargs="?", help="Text content to ingest")
+    content_ingest_parser.add_argument("--file", help="File to ingest")
+    content_ingest_parser.add_argument("--type", default="text", help="Content type")
+    content_ingest_parser.add_argument("--source", default="cli", help="Content source")
+    content_ingest_parser.add_argument("--title", help="Content title")
+    content_ingest_parser.add_argument("--tags", nargs="*", help="Content tags")
+    
+    # Search commands
+    search_parser = subparsers.add_parser("search", help="Search content")
+    search_parser.add_argument("query", help="Search query")
+    search_parser.add_argument("--type", choices=["semantic", "fulltext"], default="semantic", 
+                              help="Search type")
+    search_parser.add_argument("--limit", type=int, default=10, help="Result limit")
+    search_parser.add_argument("--content-types", nargs="*", help="Filter by content types")
+    
+    # Transform commands
+    transform_parser = subparsers.add_parser("transform", help="Transform content")
+    transform_parser.add_argument("text", help="Text to transform")
+    transform_parser.add_argument("--engine", choices=["lpe", "quantum", "maieutic"], 
+                                 default="lpe", help="Transformation engine")
+    transform_parser.add_argument("--persona", help="LPE persona")
+    transform_parser.add_argument("--namespace", help="LPE namespace")
+    transform_parser.add_argument("--style", help="LPE style")
+    
+    # LLM commands
+    llm_parser = subparsers.add_parser("llm", help="LLM operations")
+    llm_subparsers = llm_parser.add_subparsers(dest="llm_action")
+    
+    llm_complete_parser = llm_subparsers.add_parser("complete", help="Get LLM completion")
+    llm_complete_parser.add_argument("prompt", help="Prompt for completion")
+    llm_complete_parser.add_argument("--model", help="Specific model to use")
+    llm_complete_parser.add_argument("--temperature", type=float, default=0.7, help="Temperature")
+    llm_complete_parser.add_argument("--max-tokens", type=int, default=1000, help="Max tokens")
+    
+    # Config command
+    config_parser = subparsers.add_parser("config", help="Show configuration")
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    # Initialize CLI
+    async with HumanizerCLI(args.api_url) as cli:
+        
+        # Load API keys into environment
+        if keychain_service:
+            keychain_service.load_all_keys_to_env()
+        
+        try:
+            if args.command == "health":
+                await cli.health_check()
+                
+            elif args.command == "providers":
+                if args.provider_action == "status":
+                    await cli.provider_status()
+                else:
+                    console.print("Use: humanizer providers status")
+                    
+            elif args.command == "keys":
+                if args.keys_action == "add":
+                    await cli.set_api_key(args.provider, args.api_key)
+                elif args.keys_action == "migrate":
+                    console.print("🔄 Migrating API keys from legacy system...", style="blue")
+                    if keychain_service:
+                        results = keychain_service.migrate_from_legacy()
+                    else:
+                        results = {}
+                    
+                    success_count = sum(results.values())
+                    console.print(f"✅ Migrated {success_count} API keys", style="green")
+                    
+                    for provider, success in results.items():
+                        if success:
+                            console.print(f"   ✅ {provider}", style="dim green")
+                else:
+                    console.print("Use: humanizer keys add <provider> <key> or humanizer keys migrate")
+                    
+            elif args.command == "content":
+                if args.content_action == "ingest":
+                    await cli.ingest_content(
+                        text=args.text,
+                        file_path=args.file,
+                        content_type=args.type,
+                        source=args.source,
+                        title=args.title,
+                        tags=args.tags
+                    )
+                else:
+                    console.print("Use: humanizer content ingest <text> [options]")
+                    
+            elif args.command == "search":
+                await cli.search_content(
+                    query=args.query,
+                    search_type=args.type,
+                    limit=args.limit,
+                    content_types=args.content_types
+                )
+                
+            elif args.command == "transform":
+                await cli.transform_content(
+                    text=args.text,
+                    engine=args.engine,
+                    persona=args.persona,
+                    namespace=args.namespace,
+                    style=args.style
+                )
+                
+            elif args.command == "llm":
+                if args.llm_action == "complete":
+                    await cli.llm_complete(
+                        prompt=args.prompt,
+                        model=args.model,
+                        temperature=args.temperature,
+                        max_tokens=args.max_tokens
+                    )
+                else:
+                    console.print("Use: humanizer llm complete <prompt> [options]")
+                    
+            elif args.command == "config":
+                await cli.show_config()
+                
+        except KeyboardInterrupt:
+            console.print("\n👋 Goodbye!", style="yellow")
+        except Exception as e:
+            console.print(f"❌ Error: {e}", style="red")
+            if args.verbose:
+                import traceback
+                console.print(traceback.format_exc(), style="dim red")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

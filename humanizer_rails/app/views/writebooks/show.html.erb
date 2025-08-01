@@ -1,0 +1,232 @@
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <!-- Header -->
+  <div class="bg-white dark:bg-gray-800 shadow">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center py-6">
+        <div class="flex items-center space-x-4">
+          <%= link_to "← Back to Books", writebooks_path,
+              class: "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors" %>
+          <div>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white"><%= @writebook.title %></h1>
+            <div class="flex items-center space-x-4 mt-1 text-sm text-gray-600 dark:text-gray-400">
+              <% if @writebook.author.present? %>
+                <span>by <%= @writebook.author %></span>
+              <% end %>
+              <span>Version <%= @writebook.version %></span>
+              <span><%= @writebook.sections_count %> sections</span>
+              <span><%= number_with_delimiter(@writebook.total_word_count) %> words</span>
+              <% if @writebook.genre.present? %>
+                <span class="capitalize"><%= @writebook.genre %></span>
+              <% end %>
+            </div>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-3">
+          <% if @writebook.published_at.present? %>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+              Published <%= time_ago_in_words(@writebook.published_at) %> ago
+            </span>
+            <%= link_to "Unpublish", unpublish_writebook_path(@writebook), method: :patch,
+                class: "inline-flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-md transition-colors" %>
+          <% else %>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+              Draft
+            </span>
+            <%= link_to "Publish", publish_writebook_path(@writebook), method: :patch,
+                class: "inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors" %>
+          <% end %>
+          
+          <div class="relative">
+            <button class="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors">
+              Export ▼
+            </button>
+            <!-- Export dropdown would go here -->
+          </div>
+          
+          <%= link_to "Edit", edit_writebook_path(@writebook),
+              class: "inline-flex items-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors" %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      
+      <!-- Main Content -->
+      <div class="lg:col-span-3">
+        <!-- Book Description -->
+        <% if @writebook.description.present? %>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-3">Description</h2>
+            <div class="prose dark:prose-invert max-w-none">
+              <%= render_safe_message_content(@writebook.description) %>
+            </div>
+          </div>
+        <% end %>
+        
+        <!-- Sections -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+          <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex justify-between items-center">
+              <h2 class="text-lg font-medium text-gray-900 dark:text-white">Sections</h2>
+              <%= link_to "Add Section", new_writebook_writebook_section_path(@writebook),
+                  class: "inline-flex items-center px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors" %>
+            </div>
+          </div>
+          
+          <% if @writebook.writebook_sections.any? %>
+            <div class="divide-y divide-gray-200 dark:divide-gray-700">
+              <% @writebook.writebook_sections.ordered.each_with_index do |section, index| %>
+                <div class="p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                  <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                      <div class="flex items-center space-x-3 mb-2">
+                        <span class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                          Section <%= section.section_index %>
+                        </span>
+                        <% if section.source_conversation_id.present? %>
+                          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            From Conversation
+                          </span>
+                        <% elsif section.source_message_id.present? %>
+                          <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">
+                            From Message
+                          </span>
+                        <% end %>
+                      </div>
+                      
+                      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        <%= link_to section.title, writebook_writebook_section_path(@writebook, section),
+                            class: "hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" %>
+                      </h3>
+                      
+                      <% if section.content.present? %>
+                        <div class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          <%= truncate(strip_tags(section.content), length: 200) %>
+                        </div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                          <%= number_with_delimiter(section.word_count) %> words
+                        </div>
+                      <% else %>
+                        <div class="text-sm text-gray-500 dark:text-gray-400 italic">
+                          No content yet
+                        </div>
+                      <% end %>
+                    </div>
+                    
+                    <div class="flex items-center space-x-2 ml-4">
+                      <%= link_to "Edit", edit_writebook_writebook_section_path(@writebook, section),
+                          class: "text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300" %>
+                      
+                      <% unless index == 0 %>
+                        <%= link_to "↑", move_up_writebook_writebook_section_path(@writebook, section), method: :patch,
+                            class: "text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" %>
+                      <% end %>
+                      
+                      <% unless index == @writebook.writebook_sections.count - 1 %>
+                        <%= link_to "↓", move_down_writebook_writebook_section_path(@writebook, section), method: :patch,
+                            class: "text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" %>
+                      <% end %>
+                    </div>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          <% else %>
+            <div class="p-12 text-center">
+              <div class="w-16 h-16 mx-auto mb-4 text-gray-400 dark:text-gray-600">
+                📄
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No Sections Yet</h3>
+              <p class="text-gray-600 dark:text-gray-400 mb-6">
+                Start building your book by adding sections with content.
+              </p>
+              <%= link_to "Add First Section", new_writebook_writebook_section_path(@writebook),
+                  class: "inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors" %>
+            </div>
+          <% end %>
+        </div>
+      </div>
+      
+      <!-- Sidebar -->
+      <div class="lg:col-span-1">
+        <!-- Book Stats -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Book Statistics</h3>
+          
+          <dl class="space-y-3">
+            <div>
+              <dt class="text-sm text-gray-600 dark:text-gray-400">Total Sections</dt>
+              <dd class="text-lg font-semibold text-gray-900 dark:text-white"><%= @writebook.sections_count %></dd>
+            </div>
+            
+            <div>
+              <dt class="text-sm text-gray-600 dark:text-gray-400">Total Words</dt>
+              <dd class="text-lg font-semibold text-gray-900 dark:text-white"><%= number_with_delimiter(@writebook.total_word_count) %></dd>
+            </div>
+            
+            <div>
+              <dt class="text-sm text-gray-600 dark:text-gray-400">Completion</dt>
+              <% sections_with_content = @writebook.writebook_sections.where.not(content: [nil, ""]).count %>
+              <% progress_percent = @writebook.sections_count > 0 ? (sections_with_content.to_f / @writebook.sections_count * 100).round : 0 %>
+              <dd class="text-lg font-semibold text-gray-900 dark:text-white"><%= progress_percent %>%</dd>
+              <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 mt-1">
+                <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: <%= progress_percent %>%"></div>
+              </div>
+            </div>
+            
+            <div>
+              <dt class="text-sm text-gray-600 dark:text-gray-400">Created</dt>
+              <dd class="text-sm text-gray-900 dark:text-white"><%= @writebook.created_at.strftime("%B %d, %Y") %></dd>
+            </div>
+            
+            <div>
+              <dt class="text-sm text-gray-600 dark:text-gray-400">Last Updated</dt>
+              <dd class="text-sm text-gray-900 dark:text-white"><%= time_ago_in_words(@writebook.updated_at) %> ago</dd>
+            </div>
+          </dl>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Quick Actions</h3>
+          
+          <div class="space-y-2">
+            <%= link_to "Transform with Allegory", transform_writebook_path(@writebook),
+                class: "block w-full text-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors" %>
+                
+            <%= link_to "Create New Version", create_version_writebook_path(@writebook), method: :post,
+                class: "block w-full text-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors" %>
+                
+            <%= link_to "Export to PDF", export_writebook_path(@writebook, format: 'pdf'),
+                class: "block w-full text-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors" %>
+                
+            <%= link_to "Export to Markdown", export_writebook_path(@writebook, format: 'markdown'),
+                class: "block w-full text-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors" %>
+                
+            <%= link_to "Publish to Discourse", new_discourse_post_path(writebook_id: @writebook.id),
+                class: "block w-full text-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors" %>
+          </div>
+        </div>
+        
+        <!-- Allegory Settings -->
+        <% if @writebook.allegory_settings.present? && @writebook.allegory_settings.any? %>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Allegory Settings</h3>
+            
+            <dl class="space-y-2">
+              <% @writebook.allegory_settings.each do |key, value| %>
+                <div>
+                  <dt class="text-sm text-gray-600 dark:text-gray-400 capitalize"><%= key.humanize %></dt>
+                  <dd class="text-sm text-gray-900 dark:text-white"><%= value %></dd>
+                </div>
+              <% end %>
+            </dl>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

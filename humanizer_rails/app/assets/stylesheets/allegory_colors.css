@@ -1,0 +1,61 @@
+/* Custom Allegory Colors for TailwindCSS v4 */
+
+@theme {
+  --color-allegory-primary: #6366f1;      /* Indigo-500 */
+  --color-allegory-secondary: #8b5cf6;    /* Violet-500 */
+  --color-allegory-accent: #ec4899;       /* Pink-500 */
+  
+  /* Dark mode variants */
+  --color-allegory-primary-dark: #818cf8;  /* Indigo-400 */
+  --color-allegory-secondary-dark: #a78bfa; /* Violet-400 */
+  --color-allegory-accent-dark: #f472b6;   /* Pink-400 */
+  
+  /* Quantum colors */
+  --color-quantum-probe: #3b82f6;         /* Blue-500 */
+  --color-quantum-coherence: #10b981;     /* Emerald-500 */
+  --color-quantum-decoherence: #ef4444;   /* Red-500 */
+  
+  /* Quantum dark mode */
+  --color-quantum-probe-dark: #60a5fa;    /* Blue-400 */
+  --color-quantum-coherence-dark: #34d399; /* Emerald-400 */
+  --color-quantum-decoherence-dark: #f87171; /* Red-400 */
+  
+  /* Semantic background colors */
+  --color-semantic-background-light: #ffffff;
+  --color-semantic-background-dark: #111827;  /* Gray-900 */
+  --color-semantic-surface-light: #f9fafb;    /* Gray-50 */
+  --color-semantic-surface-dark: #1f2937;     /* Gray-800 */
+  
+  /* Semantic text colors */
+  --color-semantic-text-primary-light: #111827; /* Gray-900 */
+  --color-semantic-text-primary-dark: #f9fafb;  /* Gray-50 */
+  --color-semantic-text-secondary-light: #6b7280; /* Gray-500 */
+  --color-semantic-text-secondary-dark: #9ca3af;  /* Gray-400 */
+}
+
+/* Dark mode overrides */
+.dark {
+  --color-allegory-primary: var(--color-allegory-primary-dark);
+  --color-allegory-secondary: var(--color-allegory-secondary-dark);
+  --color-allegory-accent: var(--color-allegory-accent-dark);
+  --color-quantum-probe: var(--color-quantum-probe-dark);
+  --color-quantum-coherence: var(--color-quantum-coherence-dark);
+  --color-quantum-decoherence: var(--color-quantum-decoherence-dark);
+}
+
+/* Additional utility classes for enhanced visibility */
+.text-contrast {
+  color: var(--color-semantic-text-primary-light);
+}
+
+.dark .text-contrast {
+  color: var(--color-semantic-text-primary-dark);
+}
+
+.bg-semantic-light {
+  background-color: var(--color-semantic-background-light);
+}
+
+.dark .bg-semantic-light {
+  background-color: var(--color-semantic-background-dark);
+}

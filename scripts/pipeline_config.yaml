@@ -1,0 +1,208 @@
+# Humanizer Content Pipeline Configuration
+# Defines rules for routing and transforming content through the system
+
+pipeline_rules:
+  - rule_id: "gems_to_book"
+    name: "Exceptional Gems to Book Chapters"
+    description: "Route exceptional insights directly to book chapter format with comprehensive enhancement"
+    conditions:
+      min_quality: 0.9
+      min_words: 800
+    transformations:
+      - "quality_enhancement"
+      - "structural_improvement"
+      - "format_conversion"
+    destinations:
+      - "book_chapter"
+    priority: 100
+    active: true
+
+  - rule_id: "high_quality_to_multiple"
+    name: "High Quality to Multiple Destinations"
+    description: "Route high-quality content to both book chapters and blog posts"
+    conditions:
+      min_quality: 0.8
+      min_words: 500
+    transformations:
+      - "quality_enhancement"
+      - "structural_improvement"
+    destinations:
+      - "book_chapter"
+      - "blog_post"
+    priority: 90
+    active: true
+
+  - rule_id: "philosophical_to_academic"
+    name: "Philosophical Content to Academic Format"
+    description: "Route philosophical discussions to academic paper format"
+    conditions:
+      category: "philosophical"
+      min_quality: 0.7
+      min_words: 1000
+    transformations:
+      - "structural_improvement"
+      - "format_conversion"
+    destinations:
+      - "academic_paper"
+      - "discourse_post"
+    priority: 80
+    active: true
+
+  - rule_id: "technical_to_blog"
+    name: "Technical Content to Blog Posts"
+    description: "Route technical discussions to blog format with audience adaptation"
+    conditions:
+      category: "technical"
+      min_quality: 0.6
+      min_words: 400
+    transformations:
+      - "quality_enhancement"
+      - "audience_adaptation"
+      - "format_conversion"
+    destinations:
+      - "blog_post"
+      - "discourse_post"
+    priority: 70
+    active: true
+
+  - rule_id: "creative_to_humanizer"
+    name: "Creative Content to Humanizer Threads"
+    description: "Route creative and personal content to humanizer platform"
+    conditions:
+      category: "creative"
+      min_quality: 0.5
+    transformations:
+      - "tone_adjustment"
+      - "format_conversion"
+    destinations:
+      - "humanizer_thread"
+    priority: 60
+    active: true
+
+  - rule_id: "medium_quality_discourse"
+    name: "Medium Quality to Discourse"
+    description: "Route medium quality content to discourse with enhancements"
+    conditions:
+      min_quality: 0.5
+      max_quality: 0.8
+      min_words: 200
+    transformations:
+      - "structural_improvement"
+      - "format_conversion"
+    destinations:
+      - "discourse_post"
+    priority: 50
+    active: true
+
+  - rule_id: "short_content_social"
+    name: "Short Content to Social Media"
+    description: "Route short, high-impact content to social media"
+    conditions:
+      max_words: 300
+      min_quality: 0.6
+    transformations:
+      - "length_optimization"
+      - "format_conversion"
+    destinations:
+      - "social_media"
+    priority: 40
+    active: true
+
+  - rule_id: "comprehensive_content_newsletter"
+    name: "Comprehensive Content to Newsletter"
+    description: "Route comprehensive, well-structured content to newsletter format"
+    conditions:
+      min_quality: 0.7
+      min_words: 1200
+    transformations:
+      - "audience_adaptation"
+      - "format_conversion"
+    destinations:
+      - "newsletter"
+    priority: 30
+    active: true
+
+# Transformation Settings
+transformation_settings:
+  quality_enhancement:
+    max_improvement_iterations: 3
+    focus_areas: ["clarity", "coherence", "completeness"]
+    
+  structural_improvement:
+    add_headers: true
+    improve_transitions: true
+    create_sections: true
+    
+  format_conversion:
+    preserve_voice: true
+    adapt_length: true
+    optimize_for_medium: true
+    
+  audience_adaptation:
+    default_audience: "informed_general"
+    technical_simplification: true
+    add_context: true
+
+# Destination Settings
+destination_settings:
+  book_chapter:
+    output_directory: "book_output"
+    chapter_numbering: "auto"
+    include_metadata: true
+    
+  blog_post:
+    add_seo_elements: true
+    suggested_tags: true
+    call_to_action: true
+    
+  discourse_post:
+    category_mapping:
+      philosophical: "Philosophy"
+      technical: "Technology"
+      creative: "Creative"
+      personal: "General Discussion"
+    
+  social_media:
+    character_limits:
+      twitter: 280
+      linkedin: 3000
+      facebook: 63206
+    include_hashtags: true
+    
+  academic_paper:
+    citation_style: "APA"
+    include_abstract: true
+    formal_language: true
+    
+  newsletter:
+    section_headers: true
+    summary_boxes: true
+    call_to_action: true
+
+# Quality Thresholds
+quality_thresholds:
+  gem_threshold: 0.9        # Exceptional insights
+  high_quality: 0.8         # High-quality content
+  good_quality: 0.6         # Good content
+  minimum_processable: 0.4  # Minimum for any processing
+  
+# Processing Limits
+processing_limits:
+  max_batch_size: 50
+  max_concurrent_transformations: 5
+  timeout_minutes: 120
+  retry_attempts: 3
+
+# Monitoring and Reporting
+monitoring:
+  log_all_transformations: true
+  track_success_rates: true
+  generate_daily_reports: true
+  alert_on_failures: true
+  
+  metrics_to_track:
+    - "transformations_per_hour"
+    - "success_rate_by_destination"
+    - "quality_improvement_delta"
+    - "processing_time_by_transformation"
+    - "content_routing_accuracy"

@@ -1,0 +1,1204 @@
+#!/usr/bin/env python3
+"""
+Humanizer CLI - Standalone Version
+Minimal dependencies for immediate testing
+"""
+import argparse
+import asyncio
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Dict, Any, Optional
+import httpx
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+console = Console()
+
+# API Configuration
+DEFAULT_API_URL = "http://localhost:8100"
+DEFAULT_TIMEOUT = 30
+
+# Available providers
+PROVIDERS = ["openai", "anthropic", "deepseek", "groq", "google", "ollama", "together"]
+
+
+class HumanizerCLI:
+    """Standalone CLI for Humanizer API"""
+    
+    def __init__(self, api_url: str = DEFAULT_API_URL):
+        self.api_url = api_url
+        self.client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT)
+        
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.client.aclose()
+    
+    async def health_check(self):
+        """Check API health"""
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Checking API health...", total=None)
+                
+                response = await self.client.get(f"{self.api_url}/health")
+                response.raise_for_status()
+                
+                health_data = response.json()
+                
+            # Display results
+            console.print(Panel("🏥 API Health Status", style="bold green"))
+            
+            table = Table()
+            table.add_column("Component", style="cyan")
+            table.add_column("Status", style="green")
+            table.add_column("Details")
+            
+            for component, data in health_data.items():
+                if isinstance(data, dict):
+                    status = "✅ OK" if data.get("healthy", True) else "❌ ERROR"
+                    details = data.get("message", "")
+                else:
+                    status = "✅ OK"
+                    details = str(data)
+                
+                table.add_row(component, status, details)
+            
+            console.print(table)
+            
+        except httpx.RequestError as e:
+            console.print(f"❌ Connection error: {e}", style="red")
+        except httpx.HTTPStatusError as e:
+            console.print(f"❌ HTTP error: {e.response.status_code}", style="red")
+        except Exception as e:
+            console.print(f"❌ Unexpected error: {e}", style="red")
+    
+    async def providers_status(self):
+        """Check LLM provider status"""
+        try:
+            response = await self.client.get(f"{self.api_url}/api/llm/status")
+            response.raise_for_status()
+            
+            provider_data = response.json()
+            
+            console.print(Panel("🤖 LLM Provider Status", style="bold blue"))
+            
+            table = Table()
+            table.add_column("Provider", style="cyan")
+            table.add_column("Status", style="green")
+            table.add_column("API Key", style="yellow")
+            table.add_column("Status Message")
+            
+            for provider, status in provider_data.items():
+                status_icon = "✅" if status.get("available", False) else "❌"
+                has_key = "🔑" if status.get("has_key", False) else "🚫"
+                status_msg = status.get("status_message", "No message")[:30] + "..."
+                
+                table.add_row(provider, status_icon, has_key, status_msg)
+            
+            console.print(table)
+            
+        except Exception as e:
+            console.print(f"❌ Error checking providers: {e}", style="red")
+    
+    async def test_transform(self, narrative: str, persona: str = "academic", namespace: str = "general", style: str = "clear"):
+        """Test narrative transformation"""
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Transforming narrative...", total=None)
+                
+                data = {
+                    "narrative": narrative,
+                    "target_persona": persona,
+                    "target_namespace": namespace,
+                    "target_style": style,
+                    "show_steps": True
+                }
+                
+                response = await self.client.post(f"{self.api_url}/transform", json=data)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+            console.print(Panel("🎭 Narrative Transformation", style="bold green"))
+            console.print(f"[bold]Original:[/bold] {narrative}")
+            console.print(f"[bold]Persona:[/bold] {persona}")
+            console.print(f"[bold]Namespace:[/bold] {namespace}")
+            console.print(f"[bold]Style:[/bold] {style}")
+            console.print()
+            
+            if "transformed_narrative" in result:
+                console.print(f"[bold]Transformed:[/bold]")
+                console.print(result["transformed_narrative"])
+            
+            if result.get("show_steps") and "transformation_steps" in result:
+                console.print("\n[bold]Transformation Steps:[/bold]")
+                for step in result["transformation_steps"]:
+                    console.print(f"• {step}")
+            
+        except httpx.HTTPStatusError as e:
+            console.print(f"❌ HTTP Error {e.response.status_code}: {e.response.text}", style="red")
+        except Exception as e:
+            console.print(f"❌ Error: {e}", style="red")
+    
+    async def search_content(self, query: str, limit: int = 5):
+        """Search content"""
+        try:
+            params = {"q": query, "limit": limit}
+            response = await self.client.get(f"{self.api_url}/search", params=params)
+            response.raise_for_status()
+            
+            results = response.json()
+            
+            console.print(Panel(f"🔍 Search Results for '{query}'", style="bold blue"))
+            
+            if not results.get("results"):
+                console.print("No results found", style="yellow")
+                return
+            
+            for i, result in enumerate(results["results"][:limit], 1):
+                console.print(f"[bold]{i}.[/bold] {result.get('title', 'Untitled')}")
+                console.print(f"   {result.get('preview', 'No preview available')[:100]}...")
+                console.print()
+            
+        except Exception as e:
+            console.print(f"❌ Error searching: {e}", style="red")
+    
+    def show_config(self):
+        """Show current configuration"""
+        console.print(Panel("⚙️ Configuration", style="bold cyan"))
+        
+        table = Table()
+        table.add_column("Setting", style="cyan")
+        table.add_column("Value")
+        
+        table.add_row("API URL", self.api_url)
+        table.add_row("Timeout", f"{DEFAULT_TIMEOUT}s")
+        table.add_row("Python", sys.version.split()[0])
+        table.add_row("Working Dir", str(Path.cwd()))
+        
+        console.print(table)
+        
+        # Show environment variables
+        console.print("\n[bold]API Keys:[/bold]")
+        for provider in PROVIDERS:
+            key_name = f"{provider.upper()}_API_KEY"
+            has_key = "✅" if os.getenv(key_name) else "❌"
+            console.print(f"  {provider}: {has_key}")
+    
+    async def analyze_narrative(self, narrative, depth="standard", include_quantum=False, include_vectors=False, output_format="table"):
+        """Analyze narrative using Quantum Narrative Theory"""
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Analyzing narrative with QNT...", total=None)
+                
+                payload = {
+                    "narrative": narrative,
+                    "semantic_depth": depth,
+                    "include_quantum_state": include_quantum,
+                    "include_essence_vectors": include_vectors
+                }
+                
+                response = await self.client.post(f"{self.api_url}/api/narrative-theory/analyze", json=payload)
+                response.raise_for_status()
+                
+                result = response.json()
+                progress.remove_task(task)
+            
+            if output_format == "json":
+                console.print(json.dumps(result, indent=2))
+                return
+            
+            console.print(Panel(f"🧠 Quantum Narrative Theory Analysis", style="bold blue"))
+            console.print(f"[dim]Analysis ID: {result['narrative_id']}[/dim]\n")
+            
+            if output_format == "summary":
+                # Brief summary format
+                console.print(f"[bold]Persona:[/bold] {result['persona']['name']} ({result['persona']['confidence']:.2f})")
+                console.print(f"[bold]Namespace:[/bold] {result['namespace']['name']} ({result['namespace']['confidence']:.2f})")
+                console.print(f"[bold]Style:[/bold] {result['style']['name']} ({result['style']['confidence']:.2f})")
+                console.print(f"[bold]Essence:[/bold] {result['essence']['core_meaning']}")
+                return
+            
+            # Detailed table format
+            # Persona Analysis
+            console.print("[bold green]📝 PERSONA ANALYSIS[/bold green]")
+            persona_table = Table()
+            persona_table.add_column("Aspect", style="cyan")
+            persona_table.add_column("Details")
+            
+            persona = result['persona']
+            persona_table.add_row("Name", persona['name'])
+            persona_table.add_row("Confidence", f"{persona['confidence']:.2%}")
+            persona_table.add_row("Characteristics", ", ".join(persona['characteristics']))
+            persona_table.add_row("Voice Indicators", ", ".join(persona['voice_indicators']))
+            
+            console.print(persona_table)
+            console.print()
+            
+            # Namespace Analysis
+            console.print("[bold yellow]🌍 NAMESPACE ANALYSIS[/bold yellow]")
+            namespace_table = Table()
+            namespace_table.add_column("Aspect", style="cyan")
+            namespace_table.add_column("Details")
+            
+            namespace = result['namespace']
+            namespace_table.add_row("Name", namespace['name'])
+            namespace_table.add_row("Confidence", f"{namespace['confidence']:.2%}")
+            namespace_table.add_row("Cultural Context", namespace['cultural_context'])
+            namespace_table.add_row("Reality Layer", namespace['reality_layer'])
+            namespace_table.add_row("Domain Markers", ", ".join(namespace['domain_markers']))
+            
+            console.print(namespace_table)
+            console.print()
+            
+            # Style Analysis
+            console.print("[bold magenta]🎨 STYLE ANALYSIS[/bold magenta]")
+            style_table = Table()
+            style_table.add_column("Aspect", style="cyan")
+            style_table.add_column("Details")
+            
+            style = result['style']
+            style_table.add_row("Name", style['name'])
+            style_table.add_row("Confidence", f"{style['confidence']:.2%}")
+            style_table.add_row("Linguistic Features", ", ".join(style['linguistic_features']))
+            style_table.add_row("Rhetorical Devices", ", ".join(style['rhetorical_devices']))
+            style_table.add_row("Tone Characteristics", ", ".join(style['tone_characteristics']))
+            
+            console.print(style_table)
+            console.print()
+            
+            # Essence Analysis
+            console.print("[bold red]💎 ESSENCE ANALYSIS[/bold red]")
+            essence_table = Table()
+            essence_table.add_column("Aspect", style="cyan")
+            essence_table.add_column("Details")
+            
+            essence = result['essence']
+            essence_table.add_row("Core Meaning", essence['core_meaning'])
+            essence_table.add_row("Meaning Density", f"{essence['meaning_density']:.2%}")
+            essence_table.add_row("Coherence Score", f"{essence['coherence_score']:.2%}")
+            essence_table.add_row("Entropy Measure", f"{essence['entropy_measure']:.2%}")
+            essence_table.add_row("Invariant Elements", ", ".join(essence['invariant_elements']))
+            
+            console.print(essence_table)
+            console.print()
+            
+            # Transformation Potential
+            console.print("[bold blue]🔄 TRANSFORMATION POTENTIAL[/bold blue]")
+            transform_table = Table()
+            transform_table.add_column("Dimension", style="cyan")
+            transform_table.add_column("Score", style="yellow")
+            transform_table.add_column("Interpretation")
+            
+            potential = result['transformation_potential']
+            transform_table.add_row("Persona Flexibility", f"{potential['persona_flexibility']:.2%}", "How adaptable the voice is")
+            transform_table.add_row("Namespace Adaptability", f"{potential['namespace_adaptability']:.2%}", "How transferable to other contexts")
+            transform_table.add_row("Style Malleability", f"{potential['style_malleability']:.2%}", "How changeable the linguistic approach is")
+            transform_table.add_row("Essence Preservation", f"{potential['essence_preservation']:.2%}", "How well core meaning is maintained")
+            transform_table.add_row("Overall Transformability", f"{potential['overall_transformability']:.2%}", "General transformation readiness")
+            
+            console.print(transform_table)
+            
+            # Quantum State (if included)
+            if include_quantum and result.get('quantum_state'):
+                console.print()
+                console.print("[bold purple]⚛️ QUANTUM STATE ANALYSIS[/bold purple]")
+                quantum_table = Table()
+                quantum_table.add_column("Property", style="cyan")
+                quantum_table.add_column("Value")
+                
+                quantum = result['quantum_state']
+                quantum_table.add_row("Dimension", str(quantum['dimension']))
+                quantum_table.add_row("Purity", f"{quantum['purity']:.3f}")
+                quantum_table.add_row("Eigenvalues", f"{len(quantum['eigenvalues'])} eigenvalues")
+                quantum_table.add_row("Top Measurements", ", ".join([f"{k}: {v:.3f}" for k, v in list(quantum['measurement_probabilities'].items())[:3]]))
+                
+                console.print(quantum_table)
+            
+            # Processing Info
+            processing = result['processing_metadata']
+            console.print(f"\n[dim]Processing: {processing['processing_time_ms']:.1f}ms | Provider: {processing['llm_provider']} | Version: {processing['version']}[/dim]")
+            
+        except Exception as e:
+            console.print(f"❌ Error analyzing narrative: {e}", style="red")
+    
+    async def gutenberg_search(self, query=None, author=None, subject=None, limit=10):
+        """Search Gutenberg books"""
+        try:
+            params = {"limit": limit}
+            if query:
+                params["query"] = query
+            if author:
+                params["author"] = author
+            if subject:
+                params["subject"] = subject
+            
+            response = await self.client.get(f"{self.api_url}/gutenberg/search", params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            books = result.get("books", [])
+            
+            console.print(Panel(f"📚 Gutenberg Book Search Results", style="bold blue"))
+            
+            if not books:
+                console.print("No books found matching your criteria", style="yellow")
+                return
+            
+            table = Table()
+            table.add_column("ID", style="cyan")
+            table.add_column("Title", style="green")
+            table.add_column("Author", style="yellow")
+            
+            for book in books:
+                table.add_row(
+                    str(book["gutenberg_id"]),
+                    book["title"][:50] + "..." if len(book["title"]) > 50 else book["title"],
+                    book["author"][:30] + "..." if len(book["author"]) > 30 else book["author"]
+                )
+            
+            console.print(table)
+            console.print(f"\n[bold]Found {result.get('total_found', len(books))} books[/bold]")
+            
+        except Exception as e:
+            console.print(f"❌ Error searching books: {e}", style="red")
+    
+    async def gutenberg_analyze(self, book_ids, analysis_type="sample"):
+        """Start Gutenberg book analysis job"""
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Creating analysis job...", total=None)
+                
+                data = {
+                    "gutenberg_ids": book_ids,
+                    "analysis_type": analysis_type
+                }
+                
+                response = await self.client.post(f"{self.api_url}/gutenberg/analyze", json=data)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+            console.print(Panel("🔬 Analysis Job Created", style="bold green"))
+            console.print(f"[bold]Job ID:[/bold] {result['data']['job_id']}")
+            console.print(f"[bold]Books to analyze:[/bold] {len(book_ids)}")
+            console.print(f"[bold]Analysis type:[/bold] {analysis_type}")
+            console.print(f"[bold]Status:[/bold] {result['data']['status']}")
+            
+            console.print(f"\n💡 Monitor progress with: [cyan]humanizer gutenberg jobs --job-id {result['data']['job_id']}[/cyan]")
+            
+        except Exception as e:
+            console.print(f"❌ Error creating analysis job: {e}", style="red")
+    
+    async def gutenberg_jobs(self, show_status=False, job_id=None, results_id=None, cancel_id=None):
+        """Manage Gutenberg analysis jobs"""
+        try:
+            if cancel_id:
+                response = await self.client.delete(f"{self.api_url}/gutenberg/jobs/{cancel_id}")
+                response.raise_for_status()
+                result = response.json()
+                console.print(f"✅ Job {cancel_id} cancelled successfully", style="green")
+                return
+            
+            if results_id:
+                response = await self.client.get(f"{self.api_url}/gutenberg/jobs/{results_id}/results")
+                response.raise_for_status()
+                result = response.json()
+                
+                console.print(Panel(f"📊 Analysis Results - Job {results_id}", style="bold green"))
+                
+                summary = result["data"]["summary"]
+                console.print(f"[bold]Total paragraphs analyzed:[/bold] {summary['total_paragraphs_analyzed']}")
+                console.print(f"[bold]High-quality candidates:[/bold] {summary['high_quality_candidates']}")
+                console.print(f"[bold]Average enrichment score:[/bold] {summary['avg_enrichment_score']:.3f}")
+                
+                console.print("\n[bold]Top Concepts:[/bold]")
+                for concept in summary.get("top_concepts", [])[:10]:
+                    console.print(f"  • {concept}")
+                
+                console.print("\n[bold]Emotional Distribution:[/bold]")
+                for emotion, score in summary.get("emotional_distribution", {}).items():
+                    console.print(f"  {emotion}: {score:.1%}")
+                
+                console.print(f"\n💡 Add to database with: [cyan]humanizer gutenberg enrich {results_id}[/cyan]")
+                return
+            
+            if job_id:
+                response = await self.client.get(f"{self.api_url}/gutenberg/jobs/{job_id}")
+                response.raise_for_status()
+                job = response.json()
+                
+                console.print(Panel(f"📋 Job Status - {job_id}", style="bold blue"))
+                console.print(f"[bold]Status:[/bold] {job['status']}")
+                console.print(f"[bold]Progress:[/bold] {job['progress']:.1%}")
+                console.print(f"[bold]Books:[/bold] {len(job['gutenberg_ids'])}")
+                console.print(f"[bold]Analysis type:[/bold] {job['analysis_type']}")
+                console.print(f"[bold]Created:[/bold] {job['created_at']}")
+                
+                if job['started_at']:
+                    console.print(f"[bold]Started:[/bold] {job['started_at']}")
+                if job['completed_at']:
+                    console.print(f"[bold]Completed:[/bold] {job['completed_at']}")
+                if job['error_message']:
+                    console.print(f"[bold red]Error:[/bold red] {job['error_message']}")
+                
+                return
+            
+            # List all jobs
+            response = await self.client.get(f"{self.api_url}/gutenberg/jobs")
+            response.raise_for_status()
+            result = response.json()
+            
+            jobs = result["data"]["jobs"]
+            
+            console.print(Panel("📋 Analysis Jobs", style="bold blue"))
+            
+            if not jobs:
+                console.print("No analysis jobs found", style="yellow")
+                return
+            
+            table = Table()
+            table.add_column("Job ID", style="cyan")
+            table.add_column("Status", style="green")
+            table.add_column("Progress", style="yellow")
+            table.add_column("Books", style="blue")
+            table.add_column("Type")
+            table.add_column("Created")
+            
+            for job in jobs:
+                status_icon = {"completed": "✅", "running": "🔄", "failed": "❌", "pending": "⏳"}.get(job["status"], "❓")
+                table.add_row(
+                    job["job_id"][:8] + "...",
+                    f"{status_icon} {job['status']}",
+                    f"{job['progress']:.1%}",
+                    str(len(job["gutenberg_ids"])),
+                    job["analysis_type"],
+                    job["created_at"][:10]
+                )
+            
+            console.print(table)
+            
+        except Exception as e:
+            console.print(f"❌ Error managing jobs: {e}", style="red")
+    
+    async def batch_monitor(self, job_id, refresh_interval=5):
+        """Monitor job progress with live updates"""
+        console.print(f"🔄 Monitoring job {job_id} (refresh every {refresh_interval}s)")
+        console.print("Press Ctrl+C to stop monitoring\n")
+        
+        try:
+            while True:
+                response = await self.client.get(f"{self.api_url}/gutenberg/jobs/{job_id}")
+                response.raise_for_status()
+                job = response.json()
+                
+                # Clear screen and show current status
+                console.clear()
+                console.print(Panel(f"📊 Live Job Monitor - {job_id}", style="bold green"))
+                console.print(f"[bold]Status:[/bold] {job['status']}")
+                console.print(f"[bold]Progress:[/bold] {job['progress']:.1%}")
+                console.print(f"[bold]Books:[/bold] {len(job['gutenberg_ids'])}")
+                console.print(f"[bold]Type:[/bold] {job['analysis_type']}")
+                
+                if job['status'] in ['completed', 'failed', 'cancelled']:
+                    console.print(f"\n✅ Job {job['status']}!")
+                    if job['status'] == 'completed':
+                        console.print(f"💡 View results with: [cyan]humanizer gutenberg jobs --results {job_id}[/cyan]")
+                    break
+                
+                await asyncio.sleep(refresh_interval)
+                
+        except KeyboardInterrupt:
+            console.print("\n👋 Monitoring stopped")
+        except Exception as e:
+            console.print(f"\n❌ Error monitoring job: {e}", style="red")
+
+    async def gutenberg_browse(self, offset=0, limit=50, sort_by="downloads", language="en"):
+        """Browse the full Gutenberg catalog"""
+        try:
+            params = {
+                "offset": offset,
+                "limit": limit,
+                "sort_by": sort_by,
+                "language": language
+            }
+            
+            response = await self.client.get(f"{self.api_url}/gutenberg/catalog/browse", params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            data = result.get("data", {})
+            books = data.get("books", [])
+            pagination = data.get("pagination", {})
+            
+            console.print(Panel(f"📚 Gutenberg Catalog (sorted by {sort_by})", style="bold blue"))
+            
+            if not books:
+                console.print("No books found in catalog", style="yellow")
+                return
+            
+            table = Table()
+            table.add_column("ID", style="cyan")
+            table.add_column("Title", style="green")
+            table.add_column("Author", style="yellow")
+            table.add_column("Downloads", style="magenta")
+            
+            for book in books:
+                table.add_row(
+                    str(book["gutenberg_id"]),
+                    book["title"][:40] + "..." if len(book["title"]) > 40 else book["title"],
+                    book["author"][:25] + "..." if len(book["author"]) > 25 else book["author"],
+                    f"{book.get('downloads', 0):,}"
+                )
+            
+            console.print(table)
+            
+            # Show pagination info
+            total = pagination.get("total_books", 0)
+            current_end = min(offset + limit, total)
+            console.print(f"\n[bold]Showing {offset + 1}-{current_end} of {total:,} books[/bold]")
+            
+            if pagination.get("has_more", False):
+                next_offset = offset + limit
+                console.print(f"💡 Next page: [cyan]humanizer gutenberg browse --offset {next_offset} --limit {limit}[/cyan]")
+            
+        except Exception as e:
+            console.print(f"❌ Error browsing catalog: {e}", style="red")
+
+    async def gutenberg_popular(self, limit=25):
+        """Show most popular Gutenberg books"""
+        try:
+            params = {"limit": limit}
+            
+            response = await self.client.get(f"{self.api_url}/gutenberg/catalog/popular", params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            books = result.get("data", {}).get("books", [])
+            
+            console.print(Panel(f"🔥 Most Popular Gutenberg Books", style="bold red"))
+            
+            if not books:
+                console.print("No popular books found", style="yellow")
+                return
+            
+            table = Table()
+            table.add_column("Rank", style="bold cyan")
+            table.add_column("ID", style="cyan")
+            table.add_column("Title", style="green")
+            table.add_column("Author", style="yellow")
+            table.add_column("Downloads", style="bold magenta")
+            
+            for i, book in enumerate(books[:limit], 1):
+                table.add_row(
+                    str(i),
+                    str(book["gutenberg_id"]),
+                    book["title"][:35] + "..." if len(book["title"]) > 35 else book["title"],
+                    book["author"][:25] + "..." if len(book["author"]) > 25 else book["author"],
+                    f"{book.get('downloads', 0):,}"
+                )
+            
+            console.print(table)
+            console.print(f"\n[bold]Top {len(books)} most downloaded books[/bold]")
+            
+        except Exception as e:
+            console.print(f"❌ Error getting popular books: {e}", style="red")
+
+    async def gutenberg_recent(self, limit=25):
+        """Show recently added Gutenberg books"""
+        try:
+            params = {"limit": limit}
+            
+            response = await self.client.get(f"{self.api_url}/gutenberg/catalog/recent", params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            books = result.get("data", {}).get("books", [])
+            
+            console.print(Panel(f"🆕 Recently Added Gutenberg Books", style="bold green"))
+            
+            if not books:
+                console.print("No recent books found", style="yellow")
+                return
+            
+            table = Table()
+            table.add_column("ID", style="cyan")
+            table.add_column("Title", style="green")
+            table.add_column("Author", style="yellow")
+            
+            for book in books[:limit]:
+                table.add_row(
+                    str(book["gutenberg_id"]),
+                    book["title"][:40] + "..." if len(book["title"]) > 40 else book["title"],
+                    book["author"][:30] + "..." if len(book["author"]) > 30 else book["author"]
+                )
+            
+            console.print(table)
+            console.print(f"\n[bold]Found {len(books)} recently added books[/bold]")
+            
+        except Exception as e:
+            console.print(f"❌ Error getting recent books: {e}", style="red")
+
+    async def gutenberg_info(self):
+        """Show catalog information and statistics"""
+        try:
+            response = await self.client.get(f"{self.api_url}/gutenberg/catalog/info")
+            response.raise_for_status()
+            
+            result = response.json()
+            data = result.get("data", {})
+            
+            console.print(Panel(f"📊 Gutenberg Catalog Information", style="bold blue"))
+            
+            # General stats
+            console.print(f"[bold]Total Books:[/bold] {data.get('total_books', 0):,}")
+            console.print(f"[bold]Total Downloads:[/bold] {data.get('total_downloads', 0):,}")
+            
+            # Languages
+            languages = data.get("languages", {})
+            if languages:
+                console.print(f"\n[bold]Languages:[/bold]")
+                for lang, count in sorted(languages.items(), key=lambda x: x[1], reverse=True)[:10]:
+                    console.print(f"  {lang}: {count:,} books")
+            
+            # Top authors
+            top_authors = data.get("top_authors", [])
+            if top_authors:
+                console.print(f"\n[bold]Top Authors:[/bold]")
+                table = Table()
+                table.add_column("Author", style="green")
+                table.add_column("Books", style="cyan")
+                
+                for author_data in top_authors[:15]:
+                    table.add_row(
+                        author_data["author"][:40] + "..." if len(author_data["author"]) > 40 else author_data["author"],
+                        str(author_data["book_count"])
+                    )
+                
+                console.print(table)
+            
+            # Cache info
+            cache_info = data.get("cache_info", {})
+            if cache_info:
+                console.print(f"\n[bold]Cache Information:[/bold]")
+                console.print(f"  File exists: {cache_info.get('file_exists', False)}")
+                console.print(f"  File size: {cache_info.get('file_size_bytes', 0):,} bytes")
+                last_modified = cache_info.get('last_modified')
+                if last_modified:
+                    console.print(f"  Last updated: {last_modified}")
+            
+        except Exception as e:
+            console.print(f"❌ Error getting catalog info: {e}", style="red")
+
+    async def gutenberg_refresh(self):
+        """Force refresh of catalog cache"""
+        try:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task("Refreshing catalog cache...", total=None)
+                
+                response = await self.client.post(f"{self.api_url}/gutenberg/catalog/refresh")
+                response.raise_for_status()
+                
+                result = response.json()
+                data = result.get("data", {})
+                
+                progress.remove_task(task)
+                
+                console.print(Panel(f"🔄 Catalog Cache Refreshed", style="bold green"))
+                console.print(f"[bold]Books cached:[/bold] {data.get('books_cached', 0):,}")
+                console.print(f"[bold]Cache file:[/bold] {data.get('cache_file', 'Unknown')}")
+                console.print(f"\n✅ {result.get('message', 'Refresh complete')}")
+            
+        except Exception as e:
+            console.print(f"❌ Error refreshing catalog: {e}", style="red")
+
+    # ===== ATTRIBUTE MANAGEMENT METHODS =====
+    
+    async def attributes_list(self, attr_type=None, tags=None, limit=50):
+        """List saved attributes with optional filtering"""
+        try:
+            params = {"limit": limit}
+            if attr_type:
+                params["attribute_type"] = attr_type
+            if tags:
+                params["tags"] = tags
+            
+            response = await self.client.get(f"{self.api_url}/api/attributes/list", params=params)
+            response.raise_for_status()
+            
+            result = response.json()
+            attributes = result.get("attributes", [])
+            
+            console.print(Panel(f"💾 Saved Attributes ({result.get('filtered', 0)} shown, {result.get('total', 0)} total)", style="bold blue"))
+            
+            if not attributes:
+                console.print("No attributes found", style="yellow")
+                return
+            
+            table = Table()
+            table.add_column("ID", style="cyan", max_width=8)
+            table.add_column("Name", style="green")
+            table.add_column("Type", style="yellow")
+            table.add_column("Confidence", style="magenta")
+            table.add_column("Algorithm", style="blue")
+            table.add_column("Created", style="dim")
+            
+            for attr in attributes:
+                # Truncate ID for display
+                short_id = attr["attribute_id"][:8] + "..."
+                
+                # Format confidence as percentage
+                confidence = f"{attr['confidence_score']:.1%}"
+                
+                # Get algorithm name
+                algorithm = attr["algorithm_used"]["name"]
+                
+                # Format creation date
+                from datetime import datetime
+                created_at = datetime.fromisoformat(attr["created_at"])
+                created_str = created_at.strftime("%m/%d %H:%M")
+                
+                table.add_row(
+                    short_id,
+                    attr["name"][:30] + "..." if len(attr["name"]) > 30 else attr["name"],
+                    attr["attribute_type"],
+                    confidence,
+                    algorithm[:20] + "..." if len(algorithm) > 20 else algorithm,
+                    created_str
+                )
+            
+            console.print(table)
+            
+            if result.get("total", 0) > limit:
+                console.print(f"\n💡 Showing first {limit} attributes. Use --limit to see more.")
+            
+        except Exception as e:
+            console.print(f"❌ Error listing attributes: {e}", style="red")
+    
+    async def attributes_show(self, attribute_id):
+        """Show detailed information about a specific attribute"""
+        try:
+            response = await self.client.get(f"{self.api_url}/api/attributes/{attribute_id}")
+            response.raise_for_status()
+            
+            attr = response.json()
+            
+            console.print(Panel(f"🔍 Attribute Details: {attr['name']}", style="bold green"))
+            
+            # Basic information
+            console.print(f"[bold]ID:[/bold] {attr['attribute_id']}")
+            console.print(f"[bold]Type:[/bold] {attr['attribute_type']}")
+            console.print(f"[bold]Value:[/bold] {attr['value']}")
+            console.print(f"[bold]Confidence:[/bold] {attr['confidence_score']:.1%}")
+            console.print(f"[bold]Created:[/bold] {attr['created_at']}")
+            
+            if attr.get("tags"):
+                console.print(f"[bold]Tags:[/bold] {', '.join(attr['tags'])}")
+            
+            if attr.get("notes"):
+                console.print(f"[bold]Notes:[/bold] {attr['notes']}")
+            
+            # Algorithm details
+            algorithm = attr["algorithm_used"]
+            console.print(f"\n[bold blue]Algorithm Information:[/bold blue]")
+            console.print(f"[bold]Name:[/bold] {algorithm['name']}")
+            console.print(f"[bold]Version:[/bold] {algorithm['version']}")
+            console.print(f"[bold]LLM Provider:[/bold] {algorithm['llm_provider']}")
+            
+            # Show processing steps
+            if algorithm.get("processing_steps"):
+                console.print(f"\n[bold blue]Processing Steps:[/bold blue]")
+                for i, step in enumerate(algorithm["processing_steps"], 1):
+                    console.print(f"  {i}. {step}")
+            
+            # Show parameters
+            if algorithm.get("parameters"):
+                console.print(f"\n[bold blue]Algorithm Parameters:[/bold blue]")
+                for key, value in algorithm["parameters"].items():
+                    console.print(f"  [bold]{key}:[/bold] {value}")
+            
+        except Exception as e:
+            console.print(f"❌ Error showing attribute: {e}", style="red")
+    
+    async def attributes_delete(self, attribute_id, confirm=False):
+        """Delete a saved attribute"""
+        try:
+            if not confirm:
+                # Show attribute details first
+                response = await self.client.get(f"{self.api_url}/api/attributes/{attribute_id}")
+                response.raise_for_status()
+                attr = response.json()
+                
+                console.print(f"[bold red]⚠️  About to delete attribute:[/bold red]")
+                console.print(f"  Name: {attr['name']}")
+                console.print(f"  Type: {attr['attribute_type']}")
+                console.print(f"  Created: {attr['created_at']}")
+                
+                confirm_input = console.input("\nType 'yes' to confirm deletion: ")
+                if confirm_input.lower() != 'yes':
+                    console.print("❌ Deletion cancelled", style="yellow")
+                    return
+            
+            response = await self.client.delete(f"{self.api_url}/api/attributes/{attribute_id}")
+            response.raise_for_status()
+            
+            result = response.json()
+            console.print(f"✅ {result['message']}", style="green")
+            
+        except Exception as e:
+            console.print(f"❌ Error deleting attribute: {e}", style="red")
+    
+    async def attributes_stats(self):
+        """Show statistics about saved attributes"""
+        try:
+            response = await self.client.get(f"{self.api_url}/api/attributes/stats")
+            response.raise_for_status()
+            
+            stats = response.json()
+            
+            console.print(Panel("📊 Attribute Statistics", style="bold blue"))
+            
+            console.print(f"[bold]Total Attributes:[/bold] {stats['total_attributes']}")
+            console.print(f"[bold]Storage Path:[/bold] {stats['storage_path']}")
+            
+            # By type
+            if stats.get("by_type"):
+                console.print(f"\n[bold blue]By Type:[/bold blue]")
+                for attr_type, count in stats["by_type"].items():
+                    console.print(f"  {attr_type}: {count}")
+            
+            # By confidence
+            if stats.get("by_confidence"):
+                console.print(f"\n[bold blue]By Confidence Level:[/bold blue]")
+                for level, count in stats["by_confidence"].items():
+                    console.print(f"  {level}: {count}")
+            
+            # By algorithm
+            if stats.get("by_algorithm"):
+                console.print(f"\n[bold blue]By Algorithm:[/bold blue]")
+                for algorithm, count in stats["by_algorithm"].items():
+                    console.print(f"  {algorithm}: {count}")
+            
+        except Exception as e:
+            console.print(f"❌ Error getting attribute statistics: {e}", style="red")
+    
+    async def attributes_algorithm(self, algorithm_name):
+        """Show detailed algorithm information"""
+        try:
+            response = await self.client.get(f"{self.api_url}/api/attributes/algorithms/{algorithm_name}")
+            response.raise_for_status()
+            
+            result = response.json()
+            algorithm = result["algorithm"]
+            transparency = result["transparency"]
+            
+            console.print(Panel(f"🔧 Algorithm Details: {algorithm['name']}", style="bold green"))
+            
+            console.print(f"[bold]Version:[/bold] {algorithm['version']}")
+            console.print(f"[bold]LLM Provider:[/bold] {algorithm['llm_provider']}")
+            
+            # Processing steps
+            console.print(f"\n[bold blue]Processing Steps:[/bold blue]")
+            for i, step in enumerate(algorithm["processing_steps"], 1):
+                console.print(f"  {i}. {step}")
+            
+            # Parameters
+            console.print(f"\n[bold blue]Parameters:[/bold blue]")
+            for key, value in algorithm["parameters"].items():
+                console.print(f"  [bold]{key}:[/bold] {value}")
+            
+            # Prompt template
+            console.print(f"\n[bold blue]Prompt Template:[/bold blue]")
+            console.print(f"[dim]{algorithm['prompt_template'][:200]}...[/dim]")
+            
+            # Transparency info
+            console.print(f"\n[bold blue]Transparency Features:[/bold blue]")
+            for key, value in transparency.items():
+                console.print(f"  [bold]{key}:[/bold] {value}")
+            
+        except Exception as e:
+            console.print(f"❌ Error getting algorithm details: {e}", style="red")
+
+
+def create_parser():
+    """Create argument parser"""
+    parser = argparse.ArgumentParser(
+        description="Humanizer CLI - Unified Platform Interface"
+    )
+    
+    parser.add_argument(
+        "--api-url", 
+        default=DEFAULT_API_URL,
+        help=f"API base URL (default: {DEFAULT_API_URL})"
+    )
+    
+    parser.add_argument(
+        "--verbose", 
+        action="store_true",
+        help="Verbose output"
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    
+    # Health check
+    subparsers.add_parser("health", help="Check API health")
+    
+    # Providers
+    providers_parser = subparsers.add_parser("providers", help="LLM provider management")
+    providers_parser.add_argument("action", choices=["status"], default="status")
+    
+    # Transform operations
+    transform_parser = subparsers.add_parser("transform", help="Narrative transformation")
+    transform_parser.add_argument("narrative", help="Text to transform")
+    transform_parser.add_argument("--persona", default="academic", help="Target persona (default: academic)")
+    transform_parser.add_argument("--namespace", default="general", help="Target namespace (default: general)")
+    transform_parser.add_argument("--style", default="clear", help="Target style (default: clear)")
+    
+    # Narrative analysis (QNT)
+    qnt_analyze_parser = subparsers.add_parser("analyze", help="Quantum Narrative Theory analysis")
+    qnt_analyze_parser.add_argument("narrative", help="Text to analyze")
+    qnt_analyze_parser.add_argument("--depth", choices=["basic", "standard", "deep"], default="standard", help="Analysis depth")
+    qnt_analyze_parser.add_argument("--quantum", action="store_true", help="Include quantum state analysis")
+    qnt_analyze_parser.add_argument("--vectors", action="store_true", help="Include essence vectors")
+    qnt_analyze_parser.add_argument("--format", choices=["table", "json", "summary"], default="table", help="Output format")
+    qnt_analyze_parser.add_argument("--save", help="Save analysis with given name")
+    
+    # Test runner for QNT
+    test_parser = subparsers.add_parser("test", help="Run QNT test suite")
+    test_parser.add_argument("--category", help="Test specific category (classical, modern_literary, etc.)")
+    test_parser.add_argument("--complexity", choices=["simple", "medium", "complex"], help="Filter by complexity")
+    test_parser.add_argument("--count", type=int, default=5, help="Number of tests to run")
+    test_parser.add_argument("--save-results", action="store_true", help="Save test results")
+    
+    # Attribute management
+    attr_parser = subparsers.add_parser("attributes", help="Manage saved narrative attributes")
+    attr_subparsers = attr_parser.add_subparsers(dest="attr_action", help="Attribute actions")
+    
+    # List attributes
+    list_parser = attr_subparsers.add_parser("list", help="List saved attributes")
+    list_parser.add_argument("--type", help="Filter by attribute type (persona, namespace, style, essence)")
+    list_parser.add_argument("--tags", help="Filter by tags (comma-separated)")
+    list_parser.add_argument("--limit", type=int, default=50, help="Maximum results (default: 50)")
+    
+    # Show attribute details
+    show_parser = attr_subparsers.add_parser("show", help="Show detailed attribute information")
+    show_parser.add_argument("attribute_id", help="Attribute ID to display")
+    
+    # Delete attribute
+    delete_parser = attr_subparsers.add_parser("delete", help="Delete a saved attribute")
+    delete_parser.add_argument("attribute_id", help="Attribute ID to delete")
+    delete_parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
+    
+    # Show statistics
+    attr_subparsers.add_parser("stats", help="Show attribute statistics")
+    
+    # Show algorithm details
+    algorithm_parser = attr_subparsers.add_parser("algorithm", help="Show algorithm details")
+    algorithm_parser.add_argument("algorithm_name", help="Algorithm name (persona, namespace, style, essence)")
+    
+    # Search
+    content_search_parser = subparsers.add_parser("search", help="Search content")
+    content_search_parser.add_argument("query", help="Search query")
+    content_search_parser.add_argument("--limit", type=int, default=5, help="Result limit")
+    
+    # Config
+    subparsers.add_parser("config", help="Show configuration")
+    
+    # Gutenberg analysis
+    gutenberg_parser = subparsers.add_parser("gutenberg", help="Gutenberg book analysis")
+    gutenberg_subparsers = gutenberg_parser.add_subparsers(dest="gutenberg_action", help="Gutenberg actions")
+    
+    # Search books
+    gutenberg_search_parser = gutenberg_subparsers.add_parser("search", help="Search Gutenberg books")
+    gutenberg_search_parser.add_argument("--query", help="Search query for titles")
+    gutenberg_search_parser.add_argument("--author", help="Author name")
+    gutenberg_search_parser.add_argument("--subject", help="Subject category")
+    gutenberg_search_parser.add_argument("--limit", type=int, default=10, help="Maximum results (default: 10)")
+    
+    # Analyze books
+    gutenberg_analyze_parser = gutenberg_subparsers.add_parser("analyze", help="Start book analysis job")
+    gutenberg_analyze_parser.add_argument("book_ids", nargs="+", type=int, help="Gutenberg book IDs to analyze")
+    gutenberg_analyze_parser.add_argument("--type", choices=["sample", "targeted", "full"], default="sample", help="Analysis type")
+    
+    # Job management
+    jobs_parser = gutenberg_subparsers.add_parser("jobs", help="Manage analysis jobs")
+    jobs_parser.add_argument("--status", action="store_true", help="Show all jobs")
+    jobs_parser.add_argument("--job-id", help="Get specific job status")
+    jobs_parser.add_argument("--results", help="Get job results by ID")
+    jobs_parser.add_argument("--cancel", help="Cancel job by ID")
+    
+    # Catalog browsing
+    browse_parser = gutenberg_subparsers.add_parser("browse", help="Browse full Gutenberg catalog")
+    browse_parser.add_argument("--offset", type=int, default=0, help="Offset for pagination")
+    browse_parser.add_argument("--limit", type=int, default=50, help="Number of books to show")
+    browse_parser.add_argument("--sort", choices=["downloads", "title", "author", "recent"], default="downloads", help="Sort order")
+    browse_parser.add_argument("--language", default="en", help="Filter by language")
+    
+    # Popular books
+    popular_parser = gutenberg_subparsers.add_parser("popular", help="Show most popular books")
+    popular_parser.add_argument("--limit", type=int, default=25, help="Number of books to show")
+    
+    # Recent books
+    recent_parser = gutenberg_subparsers.add_parser("recent", help="Show recently added books")
+    recent_parser.add_argument("--limit", type=int, default=25, help="Number of books to show")
+    
+    # Catalog info
+    gutenberg_subparsers.add_parser("info", help="Show catalog information and statistics")
+    
+    # Refresh catalog
+    gutenberg_subparsers.add_parser("refresh", help="Force refresh of catalog cache")
+    
+    # Batch operations
+    batch_parser = subparsers.add_parser("batch", help="Batch job management")
+    batch_subparsers = batch_parser.add_subparsers(dest="batch_action", help="Batch actions")
+    
+    # List batch jobs
+    batch_subparsers.add_parser("list", help="List all batch jobs")
+    
+    # Monitor job
+    monitor_parser = batch_subparsers.add_parser("monitor", help="Monitor job progress")
+    monitor_parser.add_argument("job_id", help="Job ID to monitor")
+    monitor_parser.add_argument("--refresh", type=int, default=5, help="Refresh interval in seconds")
+    
+    return parser
+
+
+async def main():
+    """Main CLI entry point"""
+    parser = create_parser()
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return
+    
+    # Initialize CLI
+    async with HumanizerCLI(args.api_url) as cli:
+        try:
+            if args.command == "health":
+                await cli.health_check()
+            
+            elif args.command == "providers":
+                await cli.providers_status()
+            
+            elif args.command == "transform":
+                await cli.test_transform(args.narrative, args.persona, args.namespace, args.style)
+            
+            elif args.command == "analyze":
+                await cli.analyze_narrative(
+                    narrative=args.narrative,
+                    depth=args.depth,
+                    include_quantum=args.quantum,
+                    include_vectors=args.vectors,
+                    output_format=args.format
+                )
+            
+            elif args.command == "search":
+                await cli.search_content(args.query, args.limit)
+            
+            elif args.command == "config":
+                cli.show_config()
+            
+            elif args.command == "gutenberg":
+                if args.gutenberg_action == "search":
+                    await cli.gutenberg_search(
+                        query=args.query,
+                        author=args.author,
+                        subject=args.subject,
+                        limit=args.limit
+                    )
+                elif args.gutenberg_action == "analyze":
+                    await cli.gutenberg_analyze(
+                        book_ids=args.book_ids,
+                        analysis_type=args.type
+                    )
+                elif args.gutenberg_action == "jobs":
+                    await cli.gutenberg_jobs(
+                        show_status=args.status,
+                        job_id=args.job_id,
+                        results_id=args.results,
+                        cancel_id=args.cancel
+                    )
+                elif args.gutenberg_action == "browse":
+                    await cli.gutenberg_browse(
+                        offset=args.offset,
+                        limit=args.limit,
+                        sort_by=args.sort,
+                        language=args.language
+                    )
+                elif args.gutenberg_action == "popular":
+                    await cli.gutenberg_popular(limit=args.limit)
+                elif args.gutenberg_action == "recent":
+                    await cli.gutenberg_recent(limit=args.limit)
+                elif args.gutenberg_action == "info":
+                    await cli.gutenberg_info()
+                elif args.gutenberg_action == "refresh":
+                    await cli.gutenberg_refresh()
+                else:
+                    console.print("❌ Unknown gutenberg action", style="red")
+            
+            elif args.command == "batch":
+                if args.batch_action == "list":
+                    await cli.gutenberg_jobs(show_status=True)
+                elif args.batch_action == "monitor":
+                    await cli.batch_monitor(args.job_id, args.refresh)
+                else:
+                    console.print("❌ Unknown batch action", style="red")
+            
+            elif args.command == "attributes":
+                if args.attr_action == "list":
+                    await cli.attributes_list(
+                        attr_type=args.type,
+                        tags=args.tags,
+                        limit=args.limit
+                    )
+                elif args.attr_action == "show":
+                    await cli.attributes_show(args.attribute_id)
+                elif args.attr_action == "delete":
+                    await cli.attributes_delete(args.attribute_id, confirm=args.yes)
+                elif args.attr_action == "stats":
+                    await cli.attributes_stats()
+                elif args.attr_action == "algorithm":
+                    await cli.attributes_algorithm(args.algorithm_name)
+                else:
+                    console.print("❌ Unknown attributes action", style="red")
+            
+            else:
+                console.print(f"❌ Unknown command: {args.command}", style="red")
+                
+        except KeyboardInterrupt:
+            console.print("\n👋 Goodbye!", style="blue")
+        except Exception as e:
+            if args.verbose:
+                console.print_exception()
+            else:
+                console.print(f"❌ Error: {e}", style="red")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Allegory Engine - Humanizer Lighthouse</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    
+    <%= stylesheet_link_tag "tailwind", "allegory_colors", "application", "data-turbo-track": "reload" %>
+    <%= javascript_importmap_tags %>
+  </head>
+
+  <body class="bg-gray-50 dark:bg-gray-900 font-sans transition-colors">
+    <!-- Navigation Header -->
+    <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 transition-colors">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between h-16">
+          <div class="flex items-center">
+            <%= link_to root_path, class: "flex items-center space-x-3" do %>
+              <div class="w-8 h-8 bg-gradient-to-br from-purple-600 to-blue-600 rounded-lg flex items-center justify-center">
+                <span class="text-white font-bold text-sm">🌌</span>
+              </div>
+              <span class="text-xl font-bold text-gray-900 dark:text-white">Allegory Engine</span>
+            <% end %>
+          </div>
+          
+          <div class="flex items-center space-x-4">
+            <%= link_to conversations_path, class: "px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-colors" do %>
+              📚 Conversations
+            <% end %>
+            
+            <%= link_to writebooks_path, class: "px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-colors" do %>
+              📖 Books
+            <% end %>
+            
+            <%= link_to projections_path, class: "px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-colors" do %>
+              🔮 Projections
+            <% end %>
+            
+            <%= link_to attributes_path, class: "px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-colors" do %>
+              ⚛️ Attributes
+            <% end %>
+            
+            <%= link_to discourse_posts_path, class: "px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-colors" do %>
+              💬 Discourse
+            <% end %>
+            
+            <!-- Dark Mode Toggle -->
+            <button id="dark-mode-toggle" class="p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700 transition-colors">
+              <span class="dark:hidden">🌙</span>
+              <span class="hidden dark:block">☀️</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <!-- Flash Messages -->
+      <% if notice %>
+        <div class="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded" role="alert">
+          <%= notice %>
+        </div>
+      <% end %>
+      
+      <% if alert %>
+        <div class="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" role="alert">
+          <%= alert %>
+        </div>
+      <% end %>
+
+      <!-- Page Content -->
+      <%= yield %>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-12 transition-colors">
+      <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center text-sm text-gray-500 dark:text-gray-400">
+          <div>
+            <span class="font-medium">QBist Narrative Engine</span> - 
+            Quantum-inspired conversation transformation
+          </div>
+          <div class="flex items-center space-x-4">
+            <span>Namespace: lamish-galaxy</span>
+            <span>Persona: temnoon</span>
+            <span>Style: contemplative</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Stimulus Controllers for Interactivity -->
+    <script>
+      // Global configuration for Allegory Engine
+      window.AllegoryEngine = {
+        apiBase: '<%= request.base_url %>',
+        defaultAttributes: {
+          namespace: 'lamish-galaxy',
+          persona: 'temnoon', 
+          style: 'contemplative'
+        }
+      };
+
+      // Dark Mode Toggle Functionality
+      document.addEventListener('DOMContentLoaded', function() {
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        const html = document.documentElement;
+        
+        // Check for saved theme preference or default to light mode
+        const savedTheme = localStorage.getItem('theme');
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        
+        if (savedTheme === 'dark' || (!savedTheme && systemPrefersDark)) {
+          html.classList.add('dark');
+        }
+        
+        // Toggle dark mode
+        darkModeToggle.addEventListener('click', function() {
+          if (html.classList.contains('dark')) {
+            html.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+          } else {
+            html.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+          }
+        });
+        
+        // Listen for system theme changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+          if (!localStorage.getItem('theme')) {
+            if (e.matches) {
+              html.classList.add('dark');
+            } else {
+              html.classList.remove('dark');
+            }
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

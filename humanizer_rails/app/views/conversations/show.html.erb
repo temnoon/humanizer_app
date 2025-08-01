@@ -1,0 +1,599 @@
+<div class="conversation-detail">
+  <!-- Header Section -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 transition-colors">
+    <div class="flex justify-between items-start mb-6">
+      <div class="flex-1">
+        <div class="flex items-center mb-3">
+          <%= link_to conversations_path, class: "text-gray-500 hover:text-gray-700 mr-4" do %>
+            ← Back to Conversations
+          <% end %>
+          <h1 class="text-3xl font-bold text-gray-900 dark:text-white"><%= @conversation.title %></h1>
+        </div>
+        
+        <div class="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-300">
+          <span class="attribute-badge bg-<%= source_color(@conversation.source_type) %>-100 text-<%= source_color(@conversation.source_type) %>-800">
+            <%= @conversation.source_type.humanize %>
+          </span>
+          <span>💬 <%= @conversation.message_count %> messages</span>
+          <span>📝 <%= number_with_delimiter(@conversation.word_count) %> words</span>
+          <% if @conversation.original_created_at %>
+            <span>📅 <%= @conversation.original_created_at.strftime("%B %d, %Y") %></span>
+          <% end %>
+        </div>
+      </div>
+      
+      <!-- Action Buttons -->
+      <div class="flex space-x-3">
+        <%= link_to select_messages_message_analysis_index_path(conversation_id: @conversation.id),
+                    class: "bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2",
+                    data: { turbo_frame: "_top" },
+                    id: "analyze-messages-btn" do %>
+          🔍 Analyze Messages
+        <% end %>
+        
+        <%= link_to new_transformation_conversation_path(@conversation),
+                    class: "bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2" do %>
+          🔮 Transform Conversation
+        <% end %>
+        
+        <%= link_to new_book_conversation_path(@conversation),
+                    class: "bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2" do %>
+          📖 Create Book
+        <% end %>
+        
+        <%= link_to conversation_path(@conversation, format: :json),
+                    class: "border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors" do %>
+          📊 JSON Data
+        <% end %>
+        
+        <!-- Analysis Comments Dropdown -->
+        <% if @conversation.message_analyses.any? %>
+          <div class="relative">
+            <button id="analysis-dropdown-btn" 
+                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    onclick="toggleAnalysisDropdown()">
+              💬 Comments (<%= @conversation.message_analyses.count %>)
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+              </svg>
+            </button>
+            
+            <div id="analysis-dropdown" 
+                 class="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 z-50 hidden">
+              <div class="p-3 border-b border-gray-200 dark:border-gray-600">
+                <h3 class="font-semibold text-gray-900 dark:text-white">Analysis Comments</h3>
+              </div>
+              <div class="max-h-64 overflow-y-auto">
+                <% @conversation.message_analyses.recent.each do |analysis| %>
+                  <button onclick="showAnalysisModal('<%= analysis.id %>')"
+                          class="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 last:border-b-0 transition-colors">
+                    <div class="font-medium text-gray-900 dark:text-white text-sm">
+                      <%= analysis.title %>
+                    </div>
+                    <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                      <%= time_ago_in_words(analysis.created_at) %> ago • <%= analysis.message_count %> messages
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                      <%= analysis.short_summary %>
+                    </div>
+                  </button>
+                <% end %>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    
+    <!-- Summary -->
+    <% if @conversation.summary.present? %>
+      <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 transition-colors">
+        <h3 class="font-semibold text-gray-800 dark:text-white mb-2">Summary</h3>
+        <p class="text-gray-700 dark:text-gray-300"><%= @conversation.summary %></p>
+      </div>
+    <% end %>
+    
+    <!-- Latest Transformation Result -->
+    <% if @conversation.metadata&.dig('latest_transformation') %>
+      <% transformation = @conversation.metadata['latest_transformation'] %>
+      <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-4 mt-4 transition-colors">
+        <h3 class="font-semibold text-purple-800 dark:text-purple-200 mb-2 flex items-center">
+          ✨ Latest Transformation
+          <span class="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+            <%= transformation['status']&.humanize || 'Completed' %>
+          </span>
+        </h3>
+        <p class="text-purple-700 dark:text-purple-300 mb-3"><%= transformation['summary'] %></p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <% if transformation['transformation_attributes'] %>
+            <% attrs = transformation['transformation_attributes'] %>
+            <div class="bg-white dark:bg-gray-800 rounded p-2">
+              <span class="font-medium text-gray-600 dark:text-gray-400">Namespace:</span>
+              <span class="text-gray-800 dark:text-white"><%= attrs['namespace']&.humanize %></span>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded p-2">
+              <span class="font-medium text-gray-600 dark:text-gray-400">Persona:</span>
+              <span class="text-gray-800 dark:text-white"><%= attrs['persona']&.humanize %></span>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded p-2">
+              <span class="font-medium text-gray-600 dark:text-gray-400">Style:</span>
+              <span class="text-gray-800 dark:text-white"><%= attrs['style']&.humanize %></span>
+            </div>
+          <% end %>
+        </div>
+        <div class="text-xs text-purple-600 dark:text-purple-400 mt-2">
+          Applied <%= time_ago_in_words(Time.parse(transformation['created_at'])) %> ago
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <!-- Messages -->
+  <div class="space-y-4">
+    <% @conversation.messages.order(:message_index).each do |message| %>
+      <div class="message-item bg-white dark:bg-gray-800 rounded-lg shadow-md transition-colors">
+        <div class="p-6">
+          <!-- Message Header -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-3">
+              <div class="w-8 h-8 rounded-full bg-<%= message.role == 'user' ? 'blue' : 'green' %>-100 flex items-center justify-center">
+                <span class="text-<%= message.role == 'user' ? 'blue' : 'green' %>-600 text-sm font-medium">
+                  <%= message.role == 'user' ? '👤' : '🤖' %>
+                </span>
+              </div>
+              <div>
+                <div class="font-medium text-gray-900 capitalize"><%= message.role %></div>
+                <% if message.original_timestamp %>
+                  <div class="text-xs text-gray-500">
+                    <%= message.original_timestamp.strftime("%B %d, %Y at %I:%M %p") %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+            
+            <div class="flex items-center space-x-2 text-xs text-gray-500">
+              <span>#<%= message.message_index + 1 %></span>
+              <span>|</span>
+              <span><%= message.word_count %> words</span>
+            </div>
+          </div>
+          
+          <!-- Message Content -->
+          <div class="prose max-w-none">
+            <%= render_safe_message_content(message.content) %>
+          </div>
+          
+          <!-- Message Media -->
+          <% if message.message_media.any? %>
+            <div class="mt-4 pt-4 border-t border-gray-100">
+              <h4 class="text-sm font-medium text-gray-700 mb-2">Attachments</h4>
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <% message.message_media.each do |media| %>
+                  <div class="border border-gray-200 rounded-lg p-3 text-center">
+                    <div class="text-2xl mb-2">
+                      <%= media.media_type == 'image' ? '🖼️' : '📎' %>
+                    </div>
+                    <div class="text-xs text-gray-600 truncate">
+                      <%= media.filename || "#{media.media_type}" %>
+                    </div>
+                    <% unless media.file_exists? %>
+                      <div class="text-xs text-red-500 mt-1">⚠️ File missing</div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <!-- Metadata Panel -->
+  <% if @conversation.metadata.present? %>
+    <div class="bg-white rounded-lg shadow-md p-6 mt-6">
+      <h3 class="text-xl font-semibold text-gray-800 mb-4">Conversation Metadata</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <% @conversation.metadata.each do |key, value| %>
+          <div class="flex justify-between items-center py-2 border-b border-gray-100">
+            <span class="font-medium text-gray-700 capitalize"><%= key.humanize %></span>
+            <span class="text-gray-600"><%= format_metadata_value(key, value) %></span>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+</div>
+
+<!-- Analysis Modal -->
+<div id="analysis-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+    <!-- Modal Header -->
+    <div class="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-600">
+      <h2 id="modal-title" class="text-xl font-bold text-gray-900 dark:text-white">Analysis Details</h2>
+      <button onclick="closeAnalysisModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    </div>
+    
+    <!-- Modal Body -->
+    <div class="flex-1 overflow-y-auto p-6">
+      <div id="modal-content" class="space-y-6">
+        <!-- Content will be loaded here -->
+      </div>
+    </div>
+    
+    <!-- Modal Footer -->
+    <div class="flex justify-end space-x-3 p-6 border-t border-gray-200 dark:border-gray-600">
+      <button onclick="closeAnalysisModal()" 
+              class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+        Close
+      </button>
+      <button id="view-full-analysis" 
+              class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              onclick="viewFullAnalysis()">
+        View Full Analysis
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+  
+  // Store analysis data with proper scoping to avoid Turbo conflicts
+  window.conversationAnalysisData = window.conversationAnalysisData || {};
+  const analysisData = {};
+
+// Load analysis data on page load
+<% @conversation.message_analyses.each do |analysis| %>
+analysisData['<%= analysis.id %>'] = {
+  id: '<%= analysis.id %>',
+  title: '<%= j analysis.title %>',
+  summary: <%= raw analysis.summary.to_json %>,
+  messageCount: <%= analysis.message_count %>,
+  wordCount: <%= analysis.word_count %>,
+  summaryType: '<%= analysis.summary_type %>',
+  focusArea: '<%= j analysis.focus_area %>',
+  createdAt: '<%= analysis.created_at.strftime("%B %d, %Y at %I:%M %p") %>',
+  conversationId: '<%= @conversation.id %>'
+};
+<% end %>
+
+function toggleAnalysisDropdown() {
+  const dropdown = document.getElementById('analysis-dropdown');
+  dropdown.classList.toggle('hidden');
+  
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function closeDropdown(e) {
+    if (!e.target.closest('#analysis-dropdown-btn') && !e.target.closest('#analysis-dropdown')) {
+      dropdown.classList.add('hidden');
+      document.removeEventListener('click', closeDropdown);
+    }
+  });
+}
+
+function showAnalysisModal(analysisId) {
+  const analysis = analysisData[analysisId];
+  if (!analysis) return;
+  
+  // Close dropdown
+  document.getElementById('analysis-dropdown').classList.add('hidden');
+  
+  // Set modal title
+  document.getElementById('modal-title').textContent = analysis.title;
+  
+  // Generate modal content
+  const modalContent = document.getElementById('modal-content');
+  modalContent.innerHTML = generateAnalysisContent(analysis);
+  
+  // Update view full analysis button
+  const viewFullBtn = document.getElementById('view-full-analysis');
+  viewFullBtn.onclick = () => viewFullAnalysis(analysis.conversationId, analysis.id);
+  
+  // Show modal
+  document.getElementById('analysis-modal').classList.remove('hidden');
+  document.body.classList.add('overflow-hidden');
+}
+
+function closeAnalysisModal() {
+  document.getElementById('analysis-modal').classList.add('hidden');
+  document.body.classList.remove('overflow-hidden');
+}
+
+function viewFullAnalysis(conversationId, analysisId) {
+  window.open(`<%= show_summary_message_analysis_index_path(conversation_id: 'CONV_ID', analysis_id: 'ANALYSIS_ID') %>`.replace('CONV_ID', conversationId).replace('ANALYSIS_ID', analysisId), '_blank');
+}
+
+function generateAnalysisContent(analysis) {
+  const summary = analysis.summary;
+  let content = `
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 text-center">
+        <div class="text-2xl font-bold text-blue-600 dark:text-blue-400">${analysis.messageCount}</div>
+        <div class="text-sm text-blue-800 dark:text-blue-300">Messages</div>
+      </div>
+      <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 text-center">
+        <div class="text-2xl font-bold text-green-600 dark:text-green-400">${analysis.wordCount.toLocaleString()}</div>
+        <div class="text-sm text-green-800 dark:text-green-300">Words</div>
+      </div>
+      <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 text-center">
+        <div class="text-lg font-bold text-purple-600 dark:text-purple-400">${analysis.summaryType}</div>
+        <div class="text-sm text-purple-800 dark:text-purple-300">Type</div>
+      </div>
+      <div class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4 text-center">
+        <div class="text-xs font-bold text-orange-600 dark:text-orange-400">${analysis.createdAt}</div>
+        <div class="text-sm text-orange-800 dark:text-orange-300">Created</div>
+      </div>
+    </div>
+  `;
+  
+  if (summary.key_topics && summary.key_topics.length > 0) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">🏷️ Key Topics</h3>
+        <div class="flex flex-wrap gap-2">
+          ${summary.key_topics.map(topic => `
+            <span class="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-3 py-1 rounded-full text-sm">
+              #${topic}
+            </span>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  if (summary.gpt_usage && summary.gpt_usage.length > 0) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">🤖 Assistant Usage</h3>
+        <div class="space-y-2">
+          ${summary.gpt_usage.map(gpt => `
+            <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+              <span class="font-medium text-gray-900 dark:text-white">${gpt.name}</span>
+              <span class="text-sm text-gray-600 dark:text-gray-400">${gpt.message_count} messages</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  if (summary.content_preview && summary.content_preview.length > 0) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">💬 Content Preview</h3>
+        <div class="space-y-3">
+          ${summary.content_preview.map(preview => `
+            <div class="border-l-4 border-purple-400 pl-4 py-2">
+              <div class="font-medium text-gray-900 dark:text-white text-sm mb-1">${preview.role}</div>
+              <p class="text-gray-700 dark:text-gray-300 text-sm">${preview.content}</p>
+              ${preview.timestamp ? `<div class="text-xs text-gray-500 dark:text-gray-400 mt-1">${preview.timestamp}</div>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  if (analysis.focusArea) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">🎯 Focus Area</h3>
+        <p class="text-gray-700 dark:text-gray-300">${analysis.focusArea}</p>
+      </div>
+    `;
+  }
+  
+  // Add LLM analysis if available
+  if (summary.llm_analysis && summary.llm_analysis.length > 0) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">🤖 AI Analysis</h3>
+        <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+          <div class="prose prose-sm max-w-none dark:prose-invert">
+            ${formatAnalysisText(summary.llm_analysis)}
+          </div>
+        </div>
+        ${summary.analysis_type === 'fallback_heuristic' ? 
+          '<div class="text-sm text-yellow-600 dark:text-yellow-400 mt-2">⚠️ Fallback analysis used due to LLM unavailability</div>' : 
+          '<div class="text-sm text-green-600 dark:text-green-400 mt-2">✅ AI-powered analysis</div>'
+        }
+      </div>
+    `;
+  }
+  
+  // Add conversation flow insights if available
+  if (summary.conversation_flow) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">🔄 Conversation Flow</h3>
+        <p class="text-gray-700 dark:text-gray-300">${summary.conversation_flow}</p>
+      </div>
+    `;
+  }
+  
+  // Add content quality assessment if available
+  if (summary.content_quality) {
+    const quality = summary.content_quality;
+    const qualityColor = quality.assessment === 'high' ? 'green' : quality.assessment === 'medium' ? 'yellow' : 'red';
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">📈 Content Quality</h3>
+        <div class="flex items-center mb-3">
+          <span class="text-${qualityColor}-600 font-bold text-2xl">${quality.overall_score}%</span>
+          <span class="ml-2 text-${qualityColor}-600 font-medium">${quality.assessment.toUpperCase()}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          ${Object.entries(quality.indicators || {}).map(([key, value]) => `
+            <div class="flex items-center">
+              <span class="${value ? 'text-green-600' : 'text-gray-400'}">${value ? '✅' : '❌'}</span>
+              <span class="ml-2 capitalize">${key.replace('_', ' ')}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  // Add key insights if available
+  if (summary.insights && summary.insights.length > 0) {
+    content += `
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">💡 Key Insights</h3>
+        <div class="space-y-2">
+          ${summary.insights.map(insight => `
+            <div class="border-l-4 border-yellow-400 pl-3 py-2 bg-yellow-50 dark:bg-yellow-900/20">
+              <p class="text-gray-700 dark:text-gray-300 text-sm">${insight}</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+  
+  return content;
+}
+
+function formatAnalysisText(text) {
+  // Convert markdown-like formatting to HTML
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^(.*)$/, '<p>$1</p>')
+    .replace(/<p><\/p>/g, '');
+}
+
+// Store in global scope for persistence across Turbo navigation
+window.conversationAnalysisData['<%= @conversation.id %>'] = analysisData;
+
+// Turbo-compatible event handling
+document.addEventListener('turbo:load', function() {
+  // Restore analysis data for this conversation
+  const currentAnalysisData = window.conversationAnalysisData['<%= @conversation.id %>'] || {};
+  
+  // Set up escape key handler
+  function handleEscapeKey(e) {
+    if (e.key === 'Escape') {
+      closeAnalysisModal();
+    }
+  }
+  
+  document.addEventListener('keydown', handleEscapeKey);
+  
+  // Debug the analyze messages button
+  const analyzeBtn = document.getElementById('analyze-messages-btn');
+  if (analyzeBtn) {
+    console.log('Found analyze button:', analyzeBtn.href);
+    analyzeBtn.addEventListener('click', function(e) {
+      console.log('Analyze button clicked! Navigating to:', this.href);
+      this.innerHTML = '⏳ Loading...';
+      this.classList.add('opacity-75');
+    });
+  } else {
+    console.warn('Analyze button not found on page');
+  }
+  
+  // Clean up on page unload
+  document.addEventListener('turbo:before-cache', function() {
+    document.removeEventListener('keydown', handleEscapeKey);
+  });
+});
+
+// Make functions available globally for onclick handlers
+window.toggleAnalysisDropdown = function() {
+  const dropdown = document.getElementById('analysis-dropdown');
+  if (!dropdown) return;
+  
+  dropdown.classList.toggle('hidden');
+  
+  // Close dropdown when clicking outside
+  document.addEventListener('click', function closeDropdown(e) {
+    if (!e.target.closest('#analysis-dropdown-btn') && !e.target.closest('#analysis-dropdown')) {
+      dropdown.classList.add('hidden');
+      document.removeEventListener('click', closeDropdown);
+    }
+  });
+};
+
+window.showAnalysisModal = function(analysisId) {
+  const analysis = (window.conversationAnalysisData['<%= @conversation.id %>'] || {})[analysisId];
+  if (!analysis) return;
+  
+  // Close dropdown
+  const dropdown = document.getElementById('analysis-dropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+  
+  // Set modal title
+  const modalTitle = document.getElementById('modal-title');
+  if (modalTitle) modalTitle.textContent = analysis.title;
+  
+  // Generate modal content
+  const modalContent = document.getElementById('modal-content');
+  if (modalContent) modalContent.innerHTML = generateAnalysisContent(analysis);
+  
+  // Update view full analysis button
+  const viewFullBtn = document.getElementById('view-full-analysis');
+  if (viewFullBtn) {
+    viewFullBtn.onclick = () => viewFullAnalysis(analysis.conversationId, analysis.id);
+  }
+  
+  // Show modal
+  const modal = document.getElementById('analysis-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    document.body.classList.add('overflow-hidden');
+  }
+};
+
+window.closeAnalysisModal = function() {
+  const modal = document.getElementById('analysis-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    document.body.classList.remove('overflow-hidden');
+  }
+};
+
+window.viewFullAnalysis = function(conversationId, analysisId) {
+  window.open(`<%= show_summary_message_analysis_index_path(conversation_id: 'CONV_ID', analysis_id: 'ANALYSIS_ID') %>`.replace('CONV_ID', conversationId).replace('ANALYSIS_ID', analysisId), '_blank');
+};
+
+  // Make functions available globally for onclick handlers
+  window.generateAnalysisContent = generateAnalysisContent;
+  window.formatAnalysisText = formatAnalysisText;
+  
+  // Handle analyze messages button click with proper error handling
+  window.handleAnalyzeClick = function(element, event) {
+    try {
+      console.log('Analyze button clicked, navigating to:', element.href);
+      
+      // Show loading state
+      const originalContent = element.innerHTML;
+      element.innerHTML = '⏳ Loading...';
+      element.classList.add('opacity-75');
+      
+      // Add timeout to restore button if navigation fails
+      setTimeout(function() {
+        if (element.innerHTML === '⏳ Loading...') {
+          element.innerHTML = originalContent;
+          element.classList.remove('opacity-75');
+          console.warn('Navigation may have failed, restored button state');
+        }
+      }, 5000);
+      
+      // Let the link proceed normally
+      return true;
+    } catch (error) {
+      console.error('Error in handleAnalyzeClick:', error);
+      event.preventDefault();
+      return false;
+    }
+  };
+  
+})(); // End of closure
+</script>

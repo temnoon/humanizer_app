@@ -1,5 +1,24 @@
 # Humanizer App - Git Ignore File
 
+# === PRIVACY PROTECTION (NEVER COMMIT) ===
+# New organized data directories
+data/
+exports/
+test_runs/
+logs/
+config/local/
+config/environments/
+
+# Migration backup directory
+_migration_backup/
+
+# Legacy personal data locations
+Conversation-Downloads/
+**/imported_conversations/
+**/saved_attributes/
+**/content_blobs/
+**/chromadb_data/
+
 # === Python ===
 __pycache__/
 *.py[cod]
@@ -88,6 +107,29 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# === GENERATED/RUNTIME FILES ===
+# Additional runtime files  
+*.pid
+*.sock
+**/tmp/
+**/.cache/
+**/faiss_*
+*.index
+
+# Generated outputs with timestamps
+scripts/*/20*
+scripts/*_20*
+
+# Temporary test outputs
+**/test_output/
+**/temp_*/
+**/demo_attributes/
+
+# Additional personal data patterns
+**/embeddings/
+**/conversations.db
+**/conversation_*.db
 
 # === Node.js ===
 node_modules/

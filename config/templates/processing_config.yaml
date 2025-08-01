@@ -1,0 +1,18 @@
+batch_settings:
+  max_concurrent: 3
+  preserve_originals: true
+  timeout_seconds: 300
+namespaces:
+  default: classical_literature
+  futuristic: cyberpunk_future
+  modern: natural_world
+personas:
+  analytical: critic
+  creative: artist
+  default: philosopher
+  scientific: scientist
+styles:
+  academic: academic
+  casual: casual
+  default: formal
+  poetic: poetic

@@ -1,0 +1,292 @@
+<div class="book-creation-interface">
+  <!-- Header Section -->
+  <div class="bg-gradient-to-r from-green-600 to-blue-600 text-white rounded-lg p-8 mb-8">
+    <div class="flex items-center mb-4">
+      <%= link_to conversation_path(@conversation), class: "text-white/80 hover:text-white mr-4" do %>
+        ← Back to Conversation
+      <% end %>
+    </div>
+    <h1 class="text-4xl font-bold mb-4">📖 Create Book from Conversation</h1>
+    <p class="text-xl opacity-90">Transform "<%= @conversation.title %>" into a structured book</p>
+    <p class="text-sm mt-2 opacity-75">
+      Configure book structure, sections, and allegory transformations
+    </p>
+  </div>
+
+  <!-- Book Configuration -->
+  <%= form_with url: export_to_book_conversation_path(@conversation), method: :post, 
+                local: false,
+                id: "book-creation-form",
+                class: "space-y-8" do |form| %>
+    
+    <!-- Basic Book Information -->
+    <div class="allegory-card">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">📚 Book Information</h2>
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Book Title</label>
+          <%= form.text_field :title, 
+                              value: @conversation.title,
+                              class: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent" %>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Author</label>
+          <%= form.text_field :author, 
+                              value: "Allegory Engine",
+                              class: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent" %>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Genre</label>
+          <%= form.select :genre,
+                          options_for_select([
+                            ['Philosophical Dialogue', 'philosophical'],
+                            ['Technical Documentation', 'technical'],
+                            ['Narrative Fiction', 'fiction'],
+                            ['Educational Content', 'educational'],
+                            ['Research Notes', 'research'],
+                            ['Creative Writing', 'creative']
+                          ]),
+                          { prompt: 'Select genre...' },
+                          { class: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent" } %>
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Target Audience</label>
+          <%= form.select :target_audience,
+                          options_for_select([
+                            ['General Readers', 'general'],
+                            ['Academic Researchers', 'academic'],
+                            ['Students', 'students'],
+                            ['Professionals', 'professional'],
+                            ['Enthusiasts', 'enthusiasts']
+                          ]),
+                          { prompt: 'Select audience...' },
+                          { class: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent" } %>
+        </div>
+      </div>
+      
+      <!-- Description -->
+      <div class="mt-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2">Book Description</label>
+        <%= form.text_area :description,
+                           rows: 4,
+                           placeholder: "Enter a description of the book content and purpose...",
+                           class: "w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent" %>
+      </div>
+    </div>
+
+    <!-- Section Structure -->
+    <div class="allegory-card">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">📑 Section Structure</h2>
+      
+      <!-- Section Mapping Strategy -->
+      <div class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-3">Section Organization</label>
+        <div class="space-y-3">
+          <%= form.radio_button :section_strategy, 'message_per_section', { checked: true, class: "mr-2" } %>
+          <%= form.label :section_strategy_message_per_section, "One section per message (#{@conversation.message_count} sections)", class: "text-gray-700" %>
+          
+          <%= form.radio_button :section_strategy, 'role_based', { class: "mr-2" } %>
+          <%= form.label :section_strategy_role_based, "Group by speaker role", class: "text-gray-700" %>
+          
+          <%= form.radio_button :section_strategy, 'topic_based', { class: "mr-2" } %>
+          <%= form.label :section_strategy_topic_based, "Auto-detect topics and create sections", class: "text-gray-700" %>
+          
+          <%= form.radio_button :section_strategy, 'custom', { class: "mr-2" } %>
+          <%= form.label :section_strategy_custom, "Custom section breaks", class: "text-gray-700" %>
+        </div>
+      </div>
+
+      <!-- Preview Section Structure -->
+      <div id="section-preview" class="bg-gray-50 rounded-lg p-4">
+        <h4 class="font-medium text-gray-800 mb-3">Proposed Section Structure:</h4>
+        <div class="space-y-2">
+          <% @conversation.messages.order(:message_index).each_with_index do |message, index| %>
+            <div class="flex items-center space-x-3 py-2 border-b border-gray-200">
+              <span class="text-sm font-medium text-gray-600">Section <%= index + 1 %></span>
+              <span class="text-sm text-gray-500 capitalize"><%= message.role %> message</span>
+              <span class="text-sm text-gray-400 flex-1 truncate">
+                <%= truncate(message.content, length: 80) %>
+              </span>
+              <span class="text-xs text-gray-400"><%= message.word_count %> words</span>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Allegory Transformation Settings -->
+    <div class="allegory-card">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">🎭 Allegory Transformation</h2>
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Apply Transformation -->
+        <div>
+          <div class="flex items-center space-x-3 mb-4">
+            <%= form.check_box :apply_transformation, { checked: true, class: "h-5 w-5 text-green-600" } %>
+            <%= form.label :apply_transformation, "Apply allegory transformation to book content", class: "font-medium text-gray-700" %>
+          </div>
+          
+          <div id="transformation-settings" class="space-y-4">
+            <!-- Namespace -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Namespace (Ω)</label>
+              <%= form.select :namespace,
+                              options_for_select([
+                                ['Literary Universe', 'literary'],
+                                ['Academic Domain', 'academic'],
+                                ['Philosophical Realm', 'philosophical'],
+                                ['Scientific Context', 'scientific']
+                              ], 'literary'),
+                              {},
+                              { class: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500" } %>
+            </div>
+            
+            <!-- Persona -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Persona (Ψ)</label>
+              <%= form.select :persona,
+                              options_for_select([
+                                ['Master Storyteller', 'storyteller'],
+                                ['Academic Scholar', 'scholar'],
+                                ['Deep Philosopher', 'philosopher'],
+                                ['Neutral Observer', 'neutral']
+                              ], 'storyteller'),
+                              {},
+                              { class: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500" } %>
+            </div>
+            
+            <!-- Style -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Style (Σ)</label>
+              <%= form.select :style,
+                              options_for_select([
+                                ['Narrative Flow', 'narrative'],
+                                ['Academic Precision', 'academic'],
+                                ['Poetic Expression', 'poetic'],
+                                ['Natural Conversation', 'natural']
+                              ], 'narrative'),
+                              {},
+                              { class: "w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500" } %>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Book-Specific Options -->
+        <div>
+          <h4 class="font-medium text-gray-800 mb-3">Book Enhancement Options</h4>
+          
+          <div class="space-y-3">
+            <%= form.check_box :add_introduction, { checked: true, class: "mr-2" } %>
+            <%= form.label :add_introduction, "Generate introduction chapter", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :add_conclusion, { checked: true, class: "mr-2" } %>
+            <%= form.label :add_conclusion, "Generate conclusion chapter", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :add_chapter_summaries, { class: "mr-2" } %>
+            <%= form.label :add_chapter_summaries, "Add chapter summaries", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :enhance_transitions, { checked: true, class: "mr-2" } %>
+            <%= form.label :enhance_transitions, "Enhance section transitions", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :add_footnotes, { class: "mr-2" } %>
+            <%= form.label :add_footnotes, "Add explanatory footnotes", class: "text-sm text-gray-700" %>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export Format Options -->
+    <div class="allegory-card">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">📤 Export Options</h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <h4 class="font-medium text-gray-800 mb-3">Primary Format</h4>
+          <div class="space-y-2">
+            <%= form.radio_button :primary_format, 'writebook', { checked: true, class: "mr-2" } %>
+            <%= form.label :primary_format_writebook, "WriteBook Database", class: "text-sm text-gray-700" %>
+            
+            <%= form.radio_button :primary_format, 'markdown', { class: "mr-2" } %>
+            <%= form.label :primary_format_markdown, "Markdown File", class: "text-sm text-gray-700" %>
+            
+            <%= form.radio_button :primary_format, 'html', { class: "mr-2" } %>
+            <%= form.label :primary_format_html, "HTML Document", class: "text-sm text-gray-700" %>
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-medium text-gray-800 mb-3">Additional Formats</h4>
+          <div class="space-y-2">
+            <%= form.check_box :export_pdf, { class: "mr-2" } %>
+            <%= form.label :export_pdf, "PDF Document", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :export_epub, { class: "mr-2" } %>
+            <%= form.label :export_epub, "EPUB eBook", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :export_docx, { class: "mr-2" } %>
+            <%= form.label :export_docx, "Word Document", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :export_json, { class: "mr-2" } %>
+            <%= form.label :export_json, "JSON Structure", class: "text-sm text-gray-700" %>
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="font-medium text-gray-800 mb-3">Advanced Options</h4>
+          <div class="space-y-2">
+            <%= form.check_box :include_metadata, { checked: true, class: "mr-2" } %>
+            <%= form.label :include_metadata, "Include conversation metadata", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :preserve_timestamps, { class: "mr-2" } %>
+            <%= form.label :preserve_timestamps, "Preserve original timestamps", class: "text-sm text-gray-700" %>
+            
+            <%= form.check_box :create_toc, { checked: true, class: "mr-2" } %>
+            <%= form.label :create_toc, "Generate table of contents", class: "text-sm text-gray-700" %>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="flex justify-center gap-4">
+      <%= form.submit "📖 Create Book", 
+                      class: "bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors text-lg font-medium" %>
+      
+      <%= link_to "📋 Preview Structure", "#", 
+                  class: "bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors",
+                  onclick: "previewBookStructure()" %>
+      
+      <%= link_to "Cancel", conversation_path(@conversation),
+                  class: "border border-gray-300 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-50 transition-colors" %>
+    </div>
+  <% end %>
+</div>
+
+<script>
+function previewBookStructure() {
+  alert('Book structure preview would be displayed here');
+}
+
+// Toggle transformation settings based on checkbox
+document.addEventListener('DOMContentLoaded', function() {
+  const transformCheckbox = document.querySelector('input[name="apply_transformation"]');
+  const transformSettings = document.getElementById('transformation-settings');
+  
+  function toggleTransformSettings() {
+    if (transformCheckbox.checked) {
+      transformSettings.style.opacity = '1';
+      transformSettings.querySelectorAll('select').forEach(select => select.disabled = false);
+    } else {
+      transformSettings.style.opacity = '0.5';
+      transformSettings.querySelectorAll('select').forEach(select => select.disabled = true);
+    }
+  }
+  
+  transformCheckbox.addEventListener('change', toggleTransformSettings);
+  toggleTransformSettings(); // Initial state
+});
+</script>

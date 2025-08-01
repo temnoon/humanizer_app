@@ -1,0 +1,160 @@
+<div class="message-summary-results">
+  <!-- Header Section -->
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 transition-colors">
+    <div class="flex justify-between items-start mb-4">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white flex items-center">
+          📊 Message Analysis Results
+        </h1>
+        <p class="text-gray-600 dark:text-gray-300 mt-2">
+          Analysis of <%= @summary[:message_count] %> selected messages
+        </p>
+      </div>
+      <div class="flex space-x-3">
+        <%= link_to select_messages_message_analysis_index_path(conversation_id: @conversation.id), 
+                    class: "border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors" do %>
+          ← Back to Selection
+        <% end %>
+        <%= link_to conversation_path(@conversation), 
+                    class: "border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors" do %>
+          View Conversation
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary Statistics -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6 text-center transition-colors">
+      <div class="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">
+        <%= @summary[:message_count] %>
+      </div>
+      <div class="text-blue-800 dark:text-blue-300 font-medium">Total Messages</div>
+    </div>
+
+    <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-6 text-center transition-colors">
+      <div class="text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
+        <%= number_with_delimiter(@summary[:word_count]) %>
+      </div>
+      <div class="text-green-800 dark:text-green-300 font-medium">Total Words</div>
+    </div>
+
+    <div class="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-6 text-center transition-colors">
+      <div class="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-2">
+        <%= @summary[:user_messages] %> / <%= @summary[:assistant_messages] %>
+      </div>
+      <div class="text-purple-800 dark:text-purple-300 font-medium">User / Assistant</div>
+    </div>
+
+    <div class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-6 text-center transition-colors">
+      <div class="text-3xl font-bold text-orange-600 dark:text-orange-400 mb-2">
+        <%= @summary[:timespan] %>
+      </div>
+      <div class="text-orange-800 dark:text-orange-300 font-medium">Duration</div>
+    </div>
+  </div>
+
+  <!-- Key Topics -->
+  <% if @summary[:key_topics]&.any? %>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 transition-colors">
+      <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">🏷️ Key Topics</h2>
+      <div class="flex flex-wrap gap-2">
+        <% @summary[:key_topics].each do |topic| %>
+          <span class="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-3 py-1 rounded-full text-sm font-medium">
+            #<%= topic %>
+          </span>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- GPT Usage Analysis -->
+  <% if @summary[:gpt_usage]&.any? %>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 transition-colors">
+      <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">🤖 Assistant Usage</h2>
+      <div class="space-y-3">
+        <% @summary[:gpt_usage].each do |gpt_info| %>
+          <div class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+            <div class="font-medium text-gray-900 dark:text-white">
+              <%= gpt_info[:name] %>
+            </div>
+            <div class="text-sm text-gray-600 dark:text-gray-400">
+              <%= gpt_info[:message_count] %> messages
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Content Preview -->
+  <% if @summary[:content_preview]&.any? %>
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 transition-colors">
+      <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">💬 Content Preview</h2>
+      <div class="space-y-4">
+        <% @summary[:content_preview].each_with_index do |preview, index| %>
+          <div class="border-l-4 border-purple-400 pl-4 py-2">
+            <div class="flex items-center justify-between mb-2">
+              <span class="font-medium text-gray-900 dark:text-white">
+                <%= preview[:role] %>
+              </span>
+              <% if preview[:timestamp] %>
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  <%= preview[:timestamp] %>
+                </span>
+              <% end %>
+            </div>
+            <p class="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
+              <%= preview[:content] %>
+            </p>
+          </div>
+        <% end %>
+        <% if @selected_messages.count > 3 %>
+          <div class="text-center text-gray-500 dark:text-gray-400 text-sm italic">
+            ... and <%= @selected_messages.count - 3 %> more messages
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Advanced Analysis Placeholder -->
+  <div class="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg p-6 mb-6 transition-colors">
+    <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4">🔮 AI-Powered Analysis</h2>
+    <div class="text-center py-8">
+      <div class="text-6xl mb-4">⚛️</div>
+      <h3 class="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">
+        Enhanced LLM Analysis Coming Soon
+      </h3>
+      <p class="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+        This section will integrate with the Lamish Projection Engine to provide deep semantic analysis, 
+        thematic categorization, and intelligent summaries of your selected messages using advanced AI models.
+      </p>
+      <div class="mt-6 flex justify-center space-x-4 text-sm">
+        <span class="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 px-3 py-1 rounded-full">
+          Semantic Analysis
+        </span>
+        <span class="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full">
+          Narrative Structure
+        </span>
+        <span class="bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-200 px-3 py-1 rounded-full">
+          Theme Extraction
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="flex justify-center space-x-4">
+    <%= link_to "🔍 Analyze Different Messages", select_messages_message_analysis_index_path(conversation_id: @conversation.id),
+                class: "bg-purple-600 text-white px-6 py-3 rounded-lg hover:bg-purple-700 transition-colors" %>
+    
+    <%= link_to "📖 Create Book from Selection", "#",
+                class: "bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors",
+                onclick: "alert('Book creation from selected messages coming soon!')" %>
+    
+    <%= link_to "🔮 Transform Selection", "#",
+                class: "bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors",
+                onclick: "alert('Transformation of selected messages coming soon!')" %>
+  </div>
+</div>

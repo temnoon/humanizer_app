@@ -1,0 +1,279 @@
+#!/bin/bash
+# Humanizer Archive (ha) - Batch Processing Monitor Wrapper
+# This script ensures correct Python environment and launches the batch status UI
+
+set -e  # Exit on any error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# Script directory (where this wrapper is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_PATH="$SCRIPT_DIR/venv"
+PYTHON_EXEC="$VENV_PATH/bin/python"
+
+echo -e "${CYAN}🚀 Humanizer Archive Monitor${NC}"
+echo -e "${BLUE}================================================${NC}"
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Function to install Python dependencies
+install_dependencies() {
+    echo -e "${YELLOW}📦 Installing/updating Python dependencies...${NC}"
+    
+    # Core dependencies for the batch status UI
+    cat > /tmp/ha_requirements.txt << EOF
+psutil>=5.9.0
+requests>=2.28.0
+sqlite3
+pathlib
+curses
+EOF
+
+    $PYTHON_EXEC -m pip install --upgrade pip --quiet
+    $PYTHON_EXEC -m pip install -r /tmp/ha_requirements.txt --quiet
+    rm /tmp/ha_requirements.txt
+    
+    echo -e "${GREEN}✅ Dependencies installed${NC}"
+}
+
+# Function to check Python environment
+check_python_env() {
+    if [[ ! -d "$VENV_PATH" ]]; then
+        echo -e "${YELLOW}🔧 Creating Python virtual environment...${NC}"
+        cd "$SCRIPT_DIR"
+        python3 -m venv venv
+        source venv/bin/activate
+        install_dependencies
+    elif [[ ! -f "$PYTHON_EXEC" ]]; then
+        echo -e "${RED}❌ Virtual environment corrupted. Recreating...${NC}"
+        rm -rf "$VENV_PATH"
+        cd "$SCRIPT_DIR"
+        python3 -m venv venv
+        source venv/bin/activate
+        install_dependencies
+    else
+        # Check if dependencies are installed
+        if ! $PYTHON_EXEC -c "import psutil, requests" >/dev/null 2>&1; then
+            echo -e "${YELLOW}📦 Installing missing dependencies...${NC}"
+            install_dependencies
+        fi
+        echo -e "${GREEN}✅ Python environment ready${NC}"
+    fi
+}
+
+# Function to check system dependencies
+check_system_deps() {
+    echo -e "${BLUE}🔍 Checking system dependencies...${NC}"
+    
+    # Check Python 3
+    if ! command_exists python3; then
+        echo -e "${RED}❌ Python 3 not found. Please install Python 3.8+${NC}"
+        exit 1
+    fi
+    
+    # Check PostgreSQL (optional but recommended)
+    if command_exists pg_isready; then
+        if pg_isready >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ PostgreSQL running${NC}"
+        else
+            echo -e "${YELLOW}⚠️  PostgreSQL not running (some features may be limited)${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  PostgreSQL not installed (database monitoring disabled)${NC}"
+    fi
+    
+    # Check if Enhanced API is running
+    if curl -s http://127.0.0.1:8100/health >/dev/null 2>&1; then
+        echo -e "${GREEN}✅ Enhanced API running (port 8100)${NC}"
+    else
+        echo -e "${YELLOW}⚠️  Enhanced API not running (start with: python api_enhanced.py)${NC}"
+    fi
+}
+
+# Function to show usage
+show_usage() {
+    echo -e "${CYAN}Humanizer Archive Commands:${NC}"
+    echo ""
+    echo -e "${BLUE}📊 Monitoring:${NC}"
+    echo -e "${GREEN}ha${NC}                    - Launch real-time batch monitor UI"
+    echo -e "${GREEN}ha status${NC}             - Quick status snapshot" 
+    echo -e "${GREEN}ha quick${NC}              - Same as 'ha status'"
+    echo -e "${GREEN}ha processes${NC}          - List active batch processes"
+    echo -e "${GREEN}ha logs${NC}               - View recent logs"
+    echo ""
+    echo -e "${BLUE}📁 Archive Management:${NC}"
+    echo -e "${GREEN}ha archive${NC}            - Launch archive CLI"
+    echo -e "${GREEN}ha archive list${NC}       - List conversations"
+    echo -e "${GREEN}ha archive search <query>${NC} - Search conversations"
+    echo -e "${GREEN}ha archive get <id>${NC}   - Get specific conversation"
+    echo ""
+    echo -e "${BLUE}🧠 Hierarchical Embeddings:${NC}"
+    echo -e "${GREEN}ha embed${NC}              - Full embedding CLI"
+    echo -e "${GREEN}ha embed-process --all${NC} - Process all conversations"
+    echo -e "${GREEN}ha embed-search <query>${NC} - Search embedding corpus"
+    echo -e "${GREEN}ha embed-stats${NC}        - Show corpus statistics"
+    echo ""
+    echo -e "${BLUE}🔧 System:${NC}"
+    echo -e "${GREEN}ha check${NC}              - Check system dependencies"
+    echo -e "${GREEN}ha setup${NC}              - Setup/repair Python environment"
+    echo -e "${GREEN}ha help${NC}               - Show this help"
+    echo ""
+    echo -e "${BLUE}Environment:${NC}"
+    echo -e "  Script Path: ${SCRIPT_DIR}"
+    echo -e "  Python Env:  ${VENV_PATH}"
+    echo -e "  Python Exec: ${PYTHON_EXEC}"
+    echo ""
+}
+
+# Function to show active processes
+show_processes() {
+    echo -e "${CYAN}🔍 Active Batch Processes:${NC}"
+    echo ""
+    
+    # Use Python to get process info
+    $PYTHON_EXEC -c "
+import psutil
+batch_scripts = [
+    'archive_cli.py', 'mass_attribute_harvester.py', 'run_literature_mining.py',
+    'batch_monitor.py', 'batch_curator.py', 'embedding_service.py', 'api_enhanced.py'
+]
+
+found = False
+for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'cpu_percent', 'memory_info']):
+    try:
+        if proc.info['name'] in ['python', 'python3']:
+            cmdline = ' '.join(proc.info['cmdline']) if proc.info['cmdline'] else ''
+            for script in batch_scripts:
+                if script in cmdline:
+                    found = True
+                    memory_mb = proc.info['memory_info'].rss / 1024 / 1024
+                    print(f'  🟢 PID {proc.info[\"pid\"]}: {script} (CPU: {proc.info[\"cpu_percent\"]}%, MEM: {memory_mb:.1f}MB)')
+                    break
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        continue
+
+if not found:
+    print('  ⚪ No batch processes currently running')
+"
+}
+
+# Function to show recent logs
+show_logs() {
+    echo -e "${CYAN}📝 Recent Log Activity:${NC}"
+    echo ""
+    
+    log_files=(
+        "logs/api_enhanced.log"
+        "logs/humanizer_api.log"
+        "api.log"
+        "lighthouse_api.log"
+    )
+    
+    for log_file in "${log_files[@]}"; do
+        if [[ -f "$SCRIPT_DIR/$log_file" ]]; then
+            echo -e "${BLUE}--- ${log_file} (last 3 lines) ---${NC}"
+            tail -n 3 "$SCRIPT_DIR/$log_file" 2>/dev/null || echo "  (unable to read)"
+            echo ""
+        fi
+    done
+}
+
+# Main command dispatcher
+main() {
+    cd "$SCRIPT_DIR"
+    
+    case "${1:-monitor}" in
+        "monitor"|"ui"|"")
+            check_system_deps
+            check_python_env
+            echo -e "${GREEN}🖥️  Launching batch status monitor...${NC}"
+            echo -e "${BLUE}Controls: q=quit, r=refresh, c=clear, SPACE=pause${NC}"
+            echo ""
+            exec $PYTHON_EXEC batch_status_ui.py
+            ;;
+            
+        "status"|"quick")
+            check_python_env >/dev/null 2>&1
+            exec $PYTHON_EXEC quick_status.py
+            ;;
+            
+        "check")
+            check_system_deps
+            check_python_env
+            echo -e "${GREEN}✅ All checks completed${NC}"
+            ;;
+            
+        "archive"|"cli")
+            check_python_env >/dev/null 2>&1
+            echo -e "${GREEN}📁 Launching archive CLI...${NC}"
+            shift
+            exec $PYTHON_EXEC archive_cli.py "$@"
+            ;;
+            
+        "embed"|"embedding")
+            check_python_env >/dev/null 2>&1
+            echo -e "${GREEN}🧠 Launching embedding CLI...${NC}"
+            shift
+            exec $PYTHON_EXEC embedding_cli.py "$@"
+            ;;
+            
+        "embed-process")
+            check_python_env >/dev/null 2>&1
+            echo -e "${GREEN}🔄 Processing conversations into embeddings...${NC}"
+            shift
+            exec $PYTHON_EXEC embedding_cli.py process "$@"
+            ;;
+            
+        "embed-search")
+            check_python_env >/dev/null 2>&1
+            echo -e "${GREEN}🔍 Searching embedding corpus...${NC}"
+            shift
+            exec $PYTHON_EXEC embedding_cli.py search "$@"
+            ;;
+            
+        "embed-stats")
+            check_python_env >/dev/null 2>&1
+            echo -e "${GREEN}📊 Showing embedding corpus stats...${NC}"
+            exec $PYTHON_EXEC embedding_cli.py stats
+            ;;
+            
+        "logs")
+            show_logs
+            ;;
+            
+        "processes"|"ps")
+            check_python_env >/dev/null 2>&1
+            show_processes
+            ;;
+            
+        "setup"|"install")
+            echo -e "${YELLOW}🔧 Setting up Python environment...${NC}"
+            rm -rf "$VENV_PATH"
+            check_python_env
+            echo -e "${GREEN}✅ Setup completed${NC}"
+            ;;
+            
+        "help"|"--help"|"-h")
+            show_usage
+            ;;
+            
+        *)
+            echo -e "${RED}❌ Unknown command: $1${NC}"
+            echo ""
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# Run main function with all arguments
+main "$@"

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class NodeArchiveBrowserImporter:
     """Proper Node Archive Browser importer following NAB structure"""
     
-    def __init__(self, archive_path: str, database_url: str = "postgresql://tem@localhost/humanizer_archive"):
+    def __init__(self, archive_path: str, database_url: str = "postgresql://tem@localhost/humanizer_rails_development"):
         self.archive_path = Path(archive_path)
         self.database_url = database_url
         self.stats = {
@@ -158,33 +158,39 @@ class NodeArchiveBrowserImporter:
             # Extract conversation metadata  
             conv_metadata = self.parse_conversation_metadata(conversation_data, conversation_folder.name)
             
-            # Convert timestamps to datetime objects
+            # Convert timestamps to timezone-naive datetime objects (Rails expects this)
             create_time = None
             update_time = None
             
             if conv_metadata["create_time"]:
-                create_time = datetime.fromtimestamp(conv_metadata["create_time"], tz=timezone.utc)
+                create_time = datetime.fromtimestamp(conv_metadata["create_time"])
             if conv_metadata["update_time"]:
-                update_time = datetime.fromtimestamp(conv_metadata["update_time"], tz=timezone.utc)
+                update_time = datetime.fromtimestamp(conv_metadata["update_time"])
             
-            # Insert conversation record
-            conversation_db_id = await self.conn.fetchval("""
-                INSERT INTO archived_content 
-                (source_type, source_id, content_type, title, author, timestamp, 
-                 source_metadata, word_count, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                RETURNING id
+            # Generate Rails-compatible conversation ID
+            conversation_db_id = f"nab-{conv_metadata['conversation_id']}"
+            
+            # Insert conversation record into Rails conversations table
+            await self.conn.execute("""
+                INSERT INTO conversations 
+                (id, title, source_type, original_id, summary, metadata, 
+                 message_count, word_count, original_created_at, original_updated_at, 
+                 created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                ON CONFLICT (id) DO NOTHING
             """, 
-                "node_conversation",  # source_type
-                conv_metadata["conversation_id"],  # source_id
-                "conversation",  # content_type
+                conversation_db_id,  # id (Rails string primary key)
                 conv_metadata["title"],  # title
-                "unknown",  # author (conversations don't have single authors)
-                create_time,  # timestamp
-                json.dumps(conv_metadata),  # source_metadata
-                0,  # word_count (conversations themselves don't have word count)
-                datetime.now(timezone.utc),  # created_at
-                datetime.now(timezone.utc)   # updated_at
+                "chatgpt",  # source_type (compatible with Rails enum)
+                conv_metadata["conversation_id"],  # original_id
+                None,  # summary (will be calculated later)
+                json.dumps(conv_metadata),  # metadata (jsonb)
+                conv_metadata["message_count"],  # message_count
+                0,  # word_count (will be calculated from messages)
+                create_time,  # original_created_at
+                update_time,  # original_updated_at
+                datetime.now(),  # created_at
+                datetime.now()   # updated_at
             )
             
             logger.info(f"📁 Imported conversation: {conv_metadata['title']} (ID: {conversation_db_id})")
@@ -192,8 +198,9 @@ class NodeArchiveBrowserImporter:
             # Process messages in the conversation
             mapping = conversation_data.get("mapping", {})
             message_count = 0
+            total_word_count = 0
             
-            for message_id, message_obj in mapping.items():
+            for idx, (message_id, message_obj) in enumerate(mapping.items()):
                 try:
                     # Load message content (inline or referenced)
                     message_content = await self.load_message_content(message_obj, conversation_folder)
@@ -209,29 +216,38 @@ class NodeArchiveBrowserImporter:
                     if not message_text.strip():
                         continue
                     
-                    # Convert message timestamps
+                    # Convert message timestamps to timezone-naive datetime  
                     msg_create_time = None
                     if message_metadata.get("create_time"):
-                        msg_create_time = datetime.fromtimestamp(message_metadata["create_time"], tz=timezone.utc)
+                        msg_create_time = datetime.fromtimestamp(message_metadata["create_time"])
                     
-                    # Insert message record
+                    # Calculate word count
+                    msg_word_count = len(message_text.split()) if message_text else 0
+                    total_word_count += msg_word_count
+                    
+                    # Generate Rails-compatible message ID
+                    message_db_id = f"nab-{message_id}"
+                    
+                    # Insert message record into Rails messages table
                     await self.conn.execute("""
-                        INSERT INTO archived_content 
-                        (source_type, source_id, parent_id, content_type, body_text, author, 
-                         timestamp, source_metadata, word_count, created_at, updated_at)
+                        INSERT INTO messages 
+                        (id, conversation_id, role, content, parent_message_id, 
+                         message_index, word_count, metadata, original_timestamp, 
+                         created_at, updated_at)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                        ON CONFLICT (id) DO NOTHING
                     """,
-                        "node_conversation",  # source_type
-                        message_id,  # source_id
-                        conversation_db_id,  # parent_id (links to conversation)
-                        "message",  # content_type
-                        message_text,  # body_text
-                        message_metadata.get("role", "unknown"),  # author
-                        msg_create_time or create_time,  # timestamp (message time or conversation time)
-                        json.dumps(message_metadata),  # source_metadata
-                        len(message_text.split()) if message_text else 0,  # word_count
-                        datetime.now(timezone.utc),  # created_at
-                        datetime.now(timezone.utc)   # updated_at
+                        message_db_id,  # id (Rails string primary key)
+                        conversation_db_id,  # conversation_id (links to conversation)
+                        message_metadata.get("role", "unknown"),  # role
+                        message_text,  # content
+                        None,  # parent_message_id (could be enhanced later)
+                        idx,  # message_index (order in conversation)
+                        msg_word_count,  # word_count
+                        json.dumps(message_metadata),  # metadata (jsonb)
+                        msg_create_time or create_time,  # original_timestamp
+                        datetime.now(),  # created_at
+                        datetime.now()   # updated_at
                     )
                     
                     message_count += 1
@@ -241,6 +257,13 @@ class NodeArchiveBrowserImporter:
                     logger.error(f"Failed to import message {message_id}: {e}")
                     self.stats["messages_failed"] += 1
                     continue
+            
+            # Update conversation word count
+            await self.conn.execute("""
+                UPDATE conversations 
+                SET word_count = $1, message_count = $2 
+                WHERE id = $3
+            """, total_word_count, message_count, conversation_db_id)
             
             logger.info(f"  📝 Imported {message_count} messages")
             self.stats["conversations_processed"] += 1
@@ -294,7 +317,7 @@ class NodeArchiveBrowserImporter:
 
 async def main():
     """Main import function"""
-    archive_path = "/Users/tem/nab/exploded_archive_node"
+    archive_path = "/Users/tem/nab"
     
     importer = NodeArchiveBrowserImporter(archive_path)
     

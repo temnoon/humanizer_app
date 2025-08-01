@@ -1,0 +1,185 @@
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <!-- Hero Section -->
+  <div class="bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 text-white py-16">
+    <div class="max-w-4xl mx-auto text-center px-4">
+      <h1 class="text-5xl font-bold mb-6">🌌 Allegory Engine</h1>
+      <p class="text-xl mb-8 opacity-90">
+        Quantum-inspired narrative transformation using the QBist model
+      </p>
+      <p class="text-lg opacity-80 max-w-2xl mx-auto mb-8">
+        Transform conversations into books through semantic measurement, 
+        attribute operators, and coherent narrative projection based on 
+        phenomenological principles.
+      </p>
+      
+      <div class="flex justify-center space-x-4">
+        <%= link_to conversations_path, class: "bg-white text-indigo-700 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors" do %>
+          Browse Conversations →
+        <% end %>
+        <%= link_to new_projection_path, class: "border-2 border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-indigo-700 transition-colors" do %>
+          Create Projection
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Overview -->
+  <div class="py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+      
+        <!-- Conversations Card -->
+        <div class="allegory-card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Conversations</h3>
+            <span class="text-2xl">📚</span>
+          </div>
+          <div class="text-3xl font-bold text-indigo-600 dark:text-indigo-400 mb-2">
+            <%= @stats[:conversations] || 0 %>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm">Imported from ChatGPT, Discourse, manual entry</p>
+          <%= link_to "Browse →", conversations_path, class: "text-indigo-600 dark:text-indigo-400 hover:underline text-sm font-medium" %>
+        </div>
+
+        <!-- Books Card -->
+        <div class="allegory-card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Books</h3>
+            <span class="text-2xl">📖</span>
+          </div>
+          <div class="text-3xl font-bold text-purple-600 dark:text-purple-400 mb-2">
+            <%= @stats[:books] || 0 %>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm">Generated from conversation transformations</p>
+          <%= link_to "Manage →", writebooks_path, class: "text-purple-600 dark:text-purple-400 hover:underline text-sm font-medium" %>
+        </div>
+
+        <!-- Active Projections Card -->
+        <div class="allegory-card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Projections</h3>
+            <span class="text-2xl">🔮</span>
+          </div>
+          <div class="text-3xl font-bold text-pink-600 dark:text-pink-400 mb-2">
+            <%= @stats[:active_projections] || 0 %>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm">Running semantic transformations</p>
+          <%= link_to "View →", projections_path, class: "text-pink-600 dark:text-pink-400 hover:underline text-sm font-medium" %>
+        </div>
+
+        <!-- Semantic Coherence Card -->
+        <div class="allegory-card">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Coherence</h3>
+            <span class="text-2xl">⚛️</span>
+          </div>
+          <div class="text-3xl font-bold text-blue-600 dark:text-blue-400 mb-2">
+            <%= (@stats[:average_coherence] || 0.75).round(2) %>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm">Average semantic coherence score</p>
+          <%= link_to "Analyze →", attributes_path, class: "text-blue-600 dark:text-blue-400 hover:underline text-sm font-medium" %>
+        </div>
+      </div>
+
+      <!-- QBist Narrative Framework -->
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 mb-12 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-center">QBist Narrative Framework</h2>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <!-- Core Principles -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Core Principles</h3>
+            <div class="space-y-3">
+              <div class="flex items-start space-x-3">
+                <div class="w-2 h-2 bg-indigo-600 dark:bg-indigo-400 rounded-full mt-2 flex-shrink-0"></div>
+                <div>
+                  <div class="font-medium text-gray-900 dark:text-white">Essence (N_E)</div>
+                  <div class="text-sm text-gray-600 dark:text-gray-300">Core facts and relationships</div>
+                </div>
+              </div>
+              <div class="flex items-start space-x-3">
+                <div class="w-2 h-2 bg-purple-600 dark:bg-purple-400 rounded-full mt-2 flex-shrink-0"></div>
+                <div>
+                  <div class="font-medium text-gray-900 dark:text-white">Persona (Ψ)</div>
+                  <div class="text-sm text-gray-600 dark:text-gray-300">Worldview and perspective</div>
+                </div>
+              </div>
+              <div class="flex items-start space-x-3">
+                <div class="w-2 h-2 bg-pink-600 dark:bg-pink-400 rounded-full mt-2 flex-shrink-0"></div>
+                <div>
+                  <div class="font-medium text-gray-900 dark:text-white">Namespace (Ω)</div>
+                  <div class="text-sm text-gray-600 dark:text-gray-300">Universe of references</div>
+                </div>
+              </div>
+              <div class="flex items-start space-x-3">
+                <div class="w-2 h-2 bg-blue-600 dark:bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                <div>
+                  <div class="font-medium text-gray-900 dark:text-white">Style (Σ)</div>
+                  <div class="text-sm text-gray-600 dark:text-gray-300">Linguistic approach</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Transformation Pipeline -->
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Transformation Pipeline</h3>
+            <div class="space-y-4">
+              <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-900 dark:text-white mb-2">1. Semantic Measurement</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">SIC-POVM probes analyze narrative structure</div>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-900 dark:text-white mb-2">2. Attribute Operators</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">Apply persona, namespace, and style transformations</div>
+              </div>
+              <div class="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                <div class="text-sm font-medium text-gray-900 dark:text-white mb-2">3. Coherent Projection</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400">Generate transformed narrative maintaining coherence</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Import Conversation -->
+        <div class="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-6 border border-blue-200 dark:border-blue-800">
+          <div class="flex items-center mb-4">
+            <div class="w-10 h-10 bg-blue-600 dark:bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+              <span class="text-white text-lg">📤</span>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Import Conversation</h3>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">Upload ChatGPT conversation.json files with media support</p>
+          <%= link_to "Upload Files", conversations_path, class: "inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-md transition-colors" %>
+        </div>
+
+        <!-- Create Book -->
+        <div class="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg p-6 border border-purple-200 dark:border-purple-800">
+          <div class="flex items-center mb-4">
+            <div class="w-10 h-10 bg-purple-600 dark:bg-purple-500 rounded-lg flex items-center justify-center mr-3">
+              <span class="text-white text-lg">📖</span>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Create Book</h3>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">Convert conversations to structured books with allegory transformations</p>
+          <%= link_to "Start Creating", writebooks_path, class: "inline-flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-md transition-colors" %>
+        </div>
+
+        <!-- Run Projection -->
+        <div class="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-lg p-6 border border-green-200 dark:border-green-800">
+          <div class="flex items-center mb-4">
+            <div class="w-10 h-10 bg-green-600 dark:bg-green-500 rounded-lg flex items-center justify-center mr-3">
+              <span class="text-white text-lg">🔮</span>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Run Projection</h3>
+          </div>
+          <p class="text-gray-600 dark:text-gray-300 text-sm mb-4">Apply quantum-inspired narrative transformations</p>
+          <%= link_to "Start Projection", projections_path, class: "inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors" %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

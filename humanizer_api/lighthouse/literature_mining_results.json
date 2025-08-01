@@ -1,31 +1,68 @@
 {
-  "total_works_processed": 3,
-  "total_passages_analyzed": 40,
-  "total_clusters_discovered": 13,
+  "total_works_processed": 30,
+  "total_passages_analyzed": 320,
+  "total_clusters_discovered": 50,
   "attribute_categories": {
-    "style": 5,
-    "namespace": 7,
-    "emotional_register": 1
+    "style": 18,
+    "namespace": 29,
+    "temporal_perspective": 3
   },
   "discovered_attributes_by_category": {
     "style": [
+      "scraping_balanced",
+      "scraping_balanced",
+      "scraping_balanced",
+      "domestic_intimate",
       "scraping_simple",
+      "domestic_intimate",
+      "elaborate_descriptive",
+      "scraping_balanced",
+      "dialogue_rich",
+      "domestic_intimate",
+      "dialogue_rich",
+      "scraping_simple",
+      "gentle_contemplative",
       "scraping_balanced",
       "scraping_simple",
-      "scraping_balanced",
+      "fantastical_whimsical",
+      "dialogue_rich",
       "scraping_balanced"
     ],
     "namespace": [
+      "nature_lyrical",
+      "nature_lyrical",
       "philosophical_questioning",
       "romantic_tender",
       "philosophical_questioning",
-      "dramatic_conflict",
+      "philosophical_questioning",
+      "nature_lyrical",
+      "philosophical_questioning",
+      "romantic_tender",
+      "philosophical_questioning",
+      "romantic_tender",
+      "philosophical_questioning",
+      "nature_lyrical",
+      "philosophical_questioning",
+      "nature_lyrical",
+      "nature_lyrical",
+      "nature_lyrical",
+      "philosophical_questioning",
+      "romantic_tender",
+      "romantic_tender",
+      "romantic_tender",
       "romantic_tender",
       "nature_lyrical",
-      "romantic_tender"
+      "nature_lyrical",
+      "romantic_tender",
+      "nature_lyrical",
+      "romantic_tender",
+      "dramatic_conflict",
+      "dramatic_conflict"
     ],
-    "emotional_register": [
-      "swift_dramatic"
+    "temporal_perspective": [
+      "temporal_reflective",
+      "temporal_reflective",
+      "temporal_reflective"
     ]
   }
 }

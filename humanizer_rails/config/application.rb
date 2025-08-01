@@ -19,10 +19,8 @@ module HumanizerRails
     # config.time_zone = "Central Time (US & Canada)"
     # config.eager_load_paths << Rails.root.join("extras")
 
-    # Only loads a smaller set of middleware suitable for API only apps.
-    # Middleware like session, flash, cookies can be added back manually.
-    # Skip views, helpers and assets when generating a new resource.
-    config.api_only = true
+    # Enable full Rails stack for GUI frontend
+    # config.api_only = true  # Disabled for GUI support
 
     # CORS configuration
     config.middleware.insert_before 0, Rack::Cors do
@@ -34,5 +32,18 @@ module HumanizerRails
           credentials: true
       end
     end
+
+    # Discourse Integration Configuration
+    config.discourse_base_url = ENV['DISCOURSE_BASE_URL'] || 'http://localhost:4200'
+    config.discourse_api_key = ENV['DISCOURSE_API_KEY']
+    config.discourse_api_username = ENV['DISCOURSE_API_USERNAME'] || 'system'
+    config.discourse_webhook_secret = ENV['DISCOURSE_WEBHOOK_SECRET']
+
+    # Archive API Configuration  
+    config.archive_api_url = ENV['ARCHIVE_API_URL'] || 'http://localhost:7200'
+    config.lpe_api_url = ENV['LPE_API_URL'] || 'http://localhost:7201'
+    
+    # Python backend configuration
+    config.lighthouse_api_url = ENV['LIGHTHOUSE_API_URL'] || 'http://localhost:8100'
   end
 end

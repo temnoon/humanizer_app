@@ -1,0 +1,194 @@
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <!-- Header -->
+  <div class="bg-white dark:bg-gray-800 shadow">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center py-6">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900 dark:text-white">📚 WriteBooks</h1>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Manage and export your narrative collections
+          </p>
+        </div>
+        
+        <div class="flex space-x-3">
+          <%= link_to "Create New Book", new_writebook_path,
+              class: "inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors" %>
+          <%= link_to "Import from Conversation", from_conversation_writebooks_path,
+              class: "inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-md transition-colors" %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search and Filters -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-6">
+      <h2 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Search & Filter</h2>
+      
+      <form class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Search</label>
+          <input type="text" name="search" value="<%= params[:search] %>" 
+                 placeholder="Search titles, authors, content..."
+                 class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Author</label>
+          <input type="text" name="author" value="<%= params[:author] %>" 
+                 placeholder="Filter by author"
+                 class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+        </div>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Genre</label>
+          <select name="genre" class="w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+            <option value="">All Genres</option>
+            <option value="narrative" <%= 'selected' if params[:genre] == 'narrative' %>>Narrative</option>
+            <option value="technical" <%= 'selected' if params[:genre] == 'technical' %>>Technical</option>
+            <option value="academic" <%= 'selected' if params[:genre] == 'academic' %>>Academic</option>
+            <option value="fiction" <%= 'selected' if params[:genre] == 'fiction' %>>Fiction</option>
+            <option value="non-fiction" <%= 'selected' if params[:genre] == 'non-fiction' %>>Non-Fiction</option>
+          </select>
+        </div>
+        
+        <div class="flex items-end">
+          <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors">
+            Search
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- WriteBooks Grid -->
+    <% if @writebooks.any? %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @writebooks.each do |writebook| %>
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow hover:shadow-lg transition-shadow">
+            <div class="p-6">
+              <!-- Book Header -->
+              <div class="flex items-start justify-between mb-4">
+                <div class="flex-1">
+                  <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                    <%= link_to writebook.title, writebook_path(writebook), 
+                        class: "hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" %>
+                  </h3>
+                  <% if writebook.author.present? %>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">by <%= writebook.author %></p>
+                  <% end %>
+                </div>
+                
+                <% if writebook.published_at.present? %>
+                  <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    Published
+                  </span>
+                <% else %>
+                  <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">
+                    Draft
+                  </span>
+                <% end %>
+              </div>
+              
+              <!-- Book Description -->
+              <% if writebook.description.present? %>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-3">
+                  <%= truncate(writebook.description, length: 150) %>
+                </p>
+              <% end %>
+              
+              <!-- Book Metadata -->
+              <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-4">
+                <div class="flex space-x-4">
+                  <span><%= writebook.sections_count %> sections</span>
+                  <span><%= number_with_delimiter(writebook.total_word_count) %> words</span>
+                  <% if writebook.genre.present? %>
+                    <span class="capitalize"><%= writebook.genre %></span>
+                  <% end %>
+                </div>
+                <span>v<%= writebook.version %></span>
+              </div>
+              
+              <!-- Progress Bar -->
+              <% sections_with_content = writebook.writebook_sections.where.not(content: [nil, ""]).count %>
+              <% progress_percent = writebook.sections_count > 0 ? (sections_with_content.to_f / writebook.sections_count * 100).round : 0 %>
+              <div class="mb-4">
+                <div class="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                  <span>Content Progress</span>
+                  <span><%= progress_percent %>%</span>
+                </div>
+                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                  <div class="bg-indigo-600 h-2 rounded-full transition-all duration-300" style="width: <%= progress_percent %>%"></div>
+                </div>
+              </div>
+              
+              <!-- Action Buttons -->
+              <div class="flex space-x-2">
+                <%= link_to "View", writebook_path(writebook),
+                    class: "flex-1 text-center px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-md transition-colors" %>
+                    
+                <%= link_to "Edit", edit_writebook_path(writebook),
+                    class: "flex-1 text-center px-3 py-2 bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-900 dark:hover:bg-indigo-800 text-indigo-700 dark:text-indigo-300 text-sm font-medium rounded-md transition-colors" %>
+                    
+                <div class="relative">
+                  <button class="px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-md transition-colors">
+                    ⋯
+                  </button>
+                  <!-- Dropdown menu would go here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+      
+      <!-- Pagination -->
+      <% if @pagination[:pages] > 1 %>
+        <div class="mt-8 flex justify-center">
+          <nav class="flex items-center space-x-2">
+            <% if @pagination[:page] > 1 %>
+              <%= link_to "Previous", writebooks_path(params.permit!.merge(page: @pagination[:page] - 1)),
+                  class: "px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white" %>
+            <% end %>
+            
+            <% (1..@pagination[:pages]).each do |page| %>
+              <% if page == @pagination[:page] %>
+                <span class="px-3 py-2 text-sm bg-indigo-600 text-white rounded-md"><%= page %></span>
+              <% else %>
+                <%= link_to page, writebooks_path(params.permit!.merge(page: page)),
+                    class: "px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md" %>
+              <% end %>
+            <% end %>
+            
+            <% if @pagination[:page] < @pagination[:pages] %>
+              <%= link_to "Next", writebooks_path(params.permit!.merge(page: @pagination[:page] + 1)),
+                  class: "px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white" %>
+            <% end %>
+          </nav>
+        </div>
+      <% end %>
+      
+    <% else %>
+      <!-- Empty State -->
+      <div class="text-center py-12">
+        <div class="w-24 h-24 mx-auto mb-4 text-gray-400 dark:text-gray-600">
+          📚
+        </div>
+        <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No WriteBooks Found</h3>
+        <p class="text-gray-600 dark:text-gray-400 mb-6">
+          <% if params.values.any?(&:present?) %>
+            No books match your current search criteria. Try adjusting your filters.
+          <% else %>
+            Get started by creating your first book or importing from a conversation.
+          <% end %>
+        </p>
+        
+        <div class="flex justify-center space-x-3">
+          <%= link_to "Create New Book", new_writebook_path,
+              class: "inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md transition-colors" %>
+          <%= link_to "Browse Conversations", conversations_path,
+              class: "inline-flex items-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors" %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
