@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""
+Fixed Joplin Export Generator for Humanizer Books - V2
+Creates correct .jex format compatible with Joplin import
+Properly extracts and includes actual book content
+"""
+
+import json
+import tarfile
+import io
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Any, Optional
+import argparse
+import sys
+import os
+import re
+
+# Add the lighthouse directory to the path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'humanizer_api', 'lighthouse'))
+
+class JoplinExportGeneratorFixedV2:
+    def __init__(self):
+        self.items = []
+        
+    def generate_from_book_file(self, book_file_path: str, output_dir: str = None) -> str:
+        """Generate Joplin export from existing book markdown file"""
+        book_path = Path(book_file_path)
+        
+        if not book_path.exists():
+            raise FileNotFoundError(f"Book file not found: {book_file_path}")
+            
+        print(f"📚 Processing book: {book_path.name}")
+        
+        # Parse existing book file
+        book_content = book_path.read_text(encoding='utf-8')
+        book_data = self.parse_book_markdown(book_content, book_path.stem)
+        
+        print(f"✅ Parsed {len(book_data['chapters'])} chapters")
+        
+        # Generate Joplin items
+        self.create_joplin_items(book_data)
+        
+        # Create output directory
+        if output_dir is None:
+            output_dir = book_path.parent / 'joplin_exports'
+        
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+        
+        # Generate .jex file
+        export_file = output_path / f"{book_data['title'].replace(' ', '_')}.jex"
+        self.write_jex_file(export_file)
+        
+        print(f"✅ Joplin export created: {export_file}")
+        return str(export_file)
+        
+    def parse_book_markdown(self, content: str, default_title: str) -> Dict[str, Any]:
+        """Parse book markdown file to extract structure and metadata"""
+        lines = content.split('\n')
+        
+        # Initialize book data
+        book_data = {
+            'title': default_title,
+            'metadata': {},
+            'chapters': []
+        }
+        
+        # Extract title from first line if it's a header
+        if lines and lines[0].startswith('# '):
+            book_data['title'] = lines[0][2:].strip()
+        
+        # Parse content into chapters
+        current_chapter = None
+        current_content = []
+        
+        i = 0
+        while i < len(lines):
+            line = lines[i].rstrip()
+            
+            # Main chapter headers (single # )
+            if line.startswith('# ') and not self._is_metadata_line(line):
+                # Save previous chapter
+                if current_chapter and current_content:
+                    current_chapter['content'] = '\n'.join(current_content).strip()
+                    current_content = []
+                
+                # Create new chapter
+                chapter_title = line[2:].strip()
+                current_chapter = {
+                    'title': chapter_title,
+                    'content': ''
+                }
+                book_data['chapters'].append(current_chapter)
+                
+            # Collect content for current chapter
+            elif current_chapter:
+                current_content.append(lines[i])  # Keep original formatting
+                
+            i += 1
+        
+        # Save final chapter content
+        if current_chapter and current_content:
+            current_chapter['content'] = '\n'.join(current_content).strip()
+            
+        print(f"📖 Extracted content from {len(book_data['chapters'])} chapters")
+        for i, chapter in enumerate(book_data['chapters']):
+            content_length = len(chapter.get('content', ''))
+            print(f"   Chapter {i+1}: {chapter['title']} ({content_length} chars)")
+            
+        return book_data
+        
+    def _is_metadata_line(self, line: str) -> bool:
+        """Check if line is metadata rather than chapter content"""
+        metadata_patterns = [
+            r'.*\*Generated.*\*',
+            r'.*words of.*exploration',
+            r'.*Book Quality Metrics.*',
+            r'.*Table of Contents.*',
+            r'.*Book Overview.*'
+        ]
+        for pattern in metadata_patterns:
+            if re.match(pattern, line, re.IGNORECASE):
+                return True
+        return False
+        
+    def create_joplin_items(self, book_data: Dict[str, Any]):
+        """Create Joplin items in correct format"""
+        # Create main book folder
+        book_folder = self.create_folder(
+            title=book_data['title'],
+            parent_id=''
+        )
+        
+        # Create book overview note
+        overview_content = f"""# {book_data['title']}
+
+*Generated by Humanizer Lighthouse V2 Book Generation System*
+
+## Book Information
+
+- **Created**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- **Chapters**: {len(book_data.get('chapters', []))}
+- **Format**: Humanizer Enhanced Markdown
+
+## Editing with Humanizer
+
+This book was created with the Humanizer Lighthouse platform and is optimized for editing in Joplin.
+
+**Current Features:**
+- 📝 **Professional formatting** - Structured chapters with full content
+- 🏷️ **Narrative chunk markers** - Content ready for analysis
+- 📊 **Quality indicators** - Embedded quality scores and source attribution
+- 🔗 **Source tracking** - Links back to original conversations
+
+**Future Features (with Humanizer Bridge Plugin):**
+- 🧠 **Extract narrative attributes** from any text selection
+- 🎭 **Transform text** with persona and style options  
+- 📈 **Analyze content quality** and thematic coherence
+- 🔄 **Bidirectional sync** with Humanizer system
+
+---
+*Ready for professional editing in Joplin*"""
+
+        overview_note = self.create_note(
+            title=f"{book_data['title']} - Overview",
+            body=overview_content,
+            parent_id=book_folder['id']
+        )
+        
+        # Create individual chapter notes
+        for i, chapter in enumerate(book_data.get('chapters', [])):
+            chapter_content = f"""# {chapter['title']}
+
+{chapter.get('content', '*Chapter content will be added here*')}
+
+---
+*Chapter {i+1} of "{book_data['title']}" | Generated by Humanizer Lighthouse*
+"""
+            
+            chapter_note = self.create_note(
+                title=f"Chapter {i+1}: {chapter['title']}",
+                body=chapter_content,
+                parent_id=book_folder['id']
+            )
+                
+    def create_folder(self, title: str, parent_id: str) -> Dict[str, Any]:
+        """Create Joplin folder item"""
+        folder_id = self.generate_id()
+        timestamp = self.get_timestamp()
+        
+        folder = {
+            'id': folder_id,
+            'title': title,
+            'created_time': timestamp,
+            'updated_time': timestamp,
+            'user_created_time': timestamp,
+            'user_updated_time': timestamp,
+            'encryption_cipher_text': '',
+            'encryption_applied': 0,
+            'parent_id': parent_id,
+            'is_shared': 0,
+            'type_': 2  # Folder type
+        }
+        
+        self.items.append(folder)
+        return folder
+        
+    def create_note(self, title: str, body: str, parent_id: str) -> Dict[str, Any]:
+        """Create Joplin note item"""
+        note_id = self.generate_id()
+        timestamp = self.get_timestamp()
+        
+        note = {
+            'id': note_id,
+            'title': title,
+            'body': body,
+            'created_time': timestamp,
+            'updated_time': timestamp,
+            'is_conflict': 0,
+            'latitude': '0.00000000',
+            'longitude': '0.00000000',
+            'altitude': '0.0000',
+            'author': '',
+            'source_url': '',
+            'is_todo': 0,
+            'todo_due': 0,
+            'todo_completed': 0,
+            'source': 'humanizer-lighthouse',
+            'source_application': 'net.cozic.joplin-desktop',
+            'application_data': '',
+            'order': 0,
+            'user_created_time': timestamp,
+            'user_updated_time': timestamp,
+            'encryption_cipher_text': '',
+            'encryption_applied': 0,
+            'markup_language': 1,  # Markdown
+            'is_shared': 0,
+            'parent_id': parent_id,
+            'type_': 1  # Note type
+        }
+        
+        self.items.append(note)
+        return note
+        
+    def write_jex_file(self, output_file: Path):
+        """Write Joplin export (.jex) file in correct format"""
+        # Create temporary directory for staging files
+        import tempfile
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            
+            # Write each item as a serialized text file (Joplin's actual format)
+            for item in self.items:
+                item_file = temp_path / f"{item['id']}.md"
+                serialized_content = self.serialize_item(item)
+                item_file.write_text(serialized_content, encoding='utf-8')
+            
+            # Create tar archive (uncompressed, as Joplin expects)
+            with tarfile.open(output_file, 'w') as tar:
+                for item_file in temp_path.glob('*.md'):
+                    tar.add(item_file, arcname=item_file.name)
+                    
+    def serialize_item(self, item: Dict[str, Any]) -> str:
+        """Serialize item in Joplin's text format"""
+        # Joplin serializes items as: title + body + properties
+        lines = []
+        
+        # Add title (if present and not empty)
+        if item.get('title'):
+            lines.append(item['title'])
+            lines.append('')  # Empty line after title
+            
+        # Add body (if present and not empty)
+        if item.get('body'):
+            lines.append(item['body'])
+            lines.append('')  # Empty line after body
+            
+        # Add properties
+        for key, value in item.items():
+            if key not in ['title', 'body']:
+                # Format timestamps properly
+                if key.endswith('_time') and isinstance(value, int):
+                    # Convert milliseconds to ISO format
+                    dt = datetime.fromtimestamp(value / 1000)
+                    formatted_value = dt.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+                    lines.append(f"{key}: {formatted_value}")
+                else:
+                    lines.append(f"{key}: {value}")
+                    
+        return '\n'.join(lines)
+        
+    def generate_id(self) -> str:
+        """Generate Joplin-compatible ID"""
+        return uuid.uuid4().hex
+        
+    def get_timestamp(self) -> int:
+        """Get current timestamp in Joplin format (milliseconds)"""
+        return int(datetime.now().timestamp() * 1000)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Generate correct Joplin exports from Humanizer books - V2')
+    parser.add_argument('input_path', help='Path to book markdown file')
+    parser.add_argument('--output-dir', '-o', help='Output directory for .jex file')
+    parser.add_argument('--title', help='Override book title')
+    
+    args = parser.parse_args()
+    
+    try:
+        generator = JoplinExportGeneratorFixedV2()
+        
+        # Generate export
+        export_file = generator.generate_from_book_file(
+            book_file_path=args.input_path,
+            output_dir=args.output_dir
+        )
+        
+        print(f"\n🎉 Success! Joplin export ready:")
+        print(f"📂 File: {export_file}")
+        print("\n📋 Next steps:")
+        print("1. Open Joplin")
+        print("2. Go to File → Import")
+        print("3. Select the .jex file")
+        print("4. Your book will appear as a structured notebook with full content!")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return 1
+        
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -84,6 +84,8 @@ get_script_name() {
         "book-pipeline") echo "complete_book_pipeline.py" ;;
         "advanced-books") echo "advanced_book_factory.py" ;;
         "universal-books") echo "universal_book_generator.py" ;;
+        "book-create") echo "enhanced_book_creator.py" ;;
+        "joplin-export") echo "joplin_export_generator_fixed_v2.py" ;;
         
         # Embedding & Search
         "embed") echo "hierarchical_embedder.py" ;;
@@ -392,6 +394,10 @@ show_help() {
     echo "    --min-quality 0.4 --max-books 5 --analyze-only"
     echo "  universal-books      General-purpose book generator for any content source"
     echo "    --source-type notebooks|conversations|files --min-quality 0.4"
+    echo "  book-create          Interactive book creator with multiple selection methods"
+    echo "    interactive | --mode advanced | --mode export --book-file <file>"
+    echo "  joplin-export        Export book to Joplin-importable format (.jex)"
+    echo "    <book-file> [--output-dir <dir>] [--title <title>]"
     echo ""
     
     echo -e "${GREEN}🧠 Embedding & Search:${NC}"
