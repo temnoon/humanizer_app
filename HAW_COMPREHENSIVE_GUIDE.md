@@ -94,6 +94,75 @@ haw wordcloud --conversations 1000
 haw categorize --limit 500
 ```
 
+### 📚 Book Generation & LaTeX Export
+
+Advanced book creation with perfect LaTeX rendering and Joplin integration:
+
+```bash
+# Discover handwritten notebook transcripts
+haw browse-notebooks browse        # Interactive browsing
+haw browse-notebooks list          # List all conversations
+haw browse-notebooks analyze 123   # Analyze specific conversation
+
+# Generate high-quality books with sophisticated algorithms
+haw advanced-books --min-quality 0.4 --max-books 3
+haw advanced-books --analyze-only  # Preview without generating
+
+# Universal book generator for any content source
+haw universal-books --source-type notebooks --min-quality 0.4
+haw universal-books --source-type conversations --gizmo-id g-XXXXX
+
+# Interactive book creator with multiple selection methods
+haw book-create --mode interactive
+haw book-create --mode advanced
+haw book-create --mode export --book-file <file>
+
+# Complete automated book production workflow
+haw book-pipeline --quality-threshold 0.3
+haw book-pipeline --dry-run        # Test workflow
+
+# AI-assisted editorial refinement
+haw book-editor                    # Process all books
+haw book-editor --book filename.md # Edit specific book
+
+# Export books to Joplin with perfect LaTeX rendering
+haw joplin-export <book-file> [--output-dir <dir>] [--title <title>]
+```
+
+#### 🔬 LaTeX Conversation Export Workflow
+
+**NEW**: Direct conversation-to-book export with perfect LaTeX support:
+
+```bash
+# 1. Find LaTeX-rich conversations
+# Search database for conversations with mathematical content
+python3 scripts/conversation_book_exporter.py <conversation-ids>
+
+# 2. Convert to Joplin-compatible format with LaTeX conversion
+python3 scripts/joplin_markdown_exporter_simple.py <book-file>
+
+# 3. Import into Joplin
+# File → Import → Markdown format → Choose export directory
+
+# 4. Export to PDF with rendered LaTeX
+# Joplin → Export → PDF (LaTeX renders perfectly!)
+```
+
+**Supported LaTeX Features:**
+- Inline math: `\( equation \)` → `$equation$`
+- Display math: `\[ equation \]` → `$$equation$$`
+- Complex expressions with proper spacing
+- Nested delimiter prevention with advanced regex
+- KaTeX compatibility for Joplin rendering
+- Perfect PDF export with mathematical notation
+
+**Example Export Results:**
+- ⚛️ Noether Theorem Conversations (569 LaTeX expressions)
+- 🧮 Quantum Computing & Mermin (3,121 expressions)  
+- 🧠 Quantum Agency Framework (659 expressions)
+- 🔬 Heart Sutra Science Framework (1,258 expressions)
+- 📐 Dirac Equation & Bra-Ket Notation (1,751 expressions total)
+
 ### 📁 Archive Management
 
 Direct access to specialized CLI tools:
@@ -195,6 +264,19 @@ haw extract-writing extract --limit 1000
 
 # Or use the pipeline
 haw pipeline run writing-profile
+```
+
+### LaTeX Book Export & Publishing
+```bash
+# Complete workflow for mathematical content export
+# 1. Find conversations with mathematical content
+python3 scripts/conversation_book_exporter.py nab-conversation-id-1 nab-conversation-id-2
+
+# 2. Convert to Joplin-compatible format
+python3 scripts/joplin_markdown_exporter_simple.py book_filename.md
+
+# 3. Import to Joplin: File → Import → Markdown
+# 4. Export PDF: Joplin → Export → PDF (perfect LaTeX rendering!)
 ```
 
 ### Content Discovery & Analysis
