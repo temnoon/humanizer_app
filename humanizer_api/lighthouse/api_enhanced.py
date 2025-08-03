@@ -49,6 +49,12 @@ from vision_endpoints import vision_router
 from advanced_attribute_api import advanced_attr_router
 from linguistic_api_endpoints import linguistic_router
 
+# Import new API routers for Subjective Narrative Humanizer
+from book_generation_api import book_router
+from archive_api_endpoints import archive_router
+from insights_api import insights_router
+from content_ingestion_api import content_router
+
 # Import quantum narrative theory
 try:
     from narrative_theory import QuantumNarrativeEngine, MeaningState, NarrativeTransformation
@@ -146,6 +152,42 @@ app.include_router(advanced_attr_router)
 app.include_router(linguistic_router)
 app.include_router(balanced_router)
 app.include_router(writebook_router)
+
+# Include new API routers for Subjective Narrative Humanizer
+app.include_router(book_router)
+app.include_router(archive_router)
+app.include_router(insights_router)
+
+# Include CLI API router
+from cli_api import cli_router
+app.include_router(cli_router)
+
+# Include Pipeline API router
+from pipeline_router import pipeline_router
+app.include_router(pipeline_router)
+
+# Include Export API router
+from export_router import export_router
+app.include_router(export_router)
+
+# Include Concept Mapping API router
+from concept_mapping_api import concept_router
+app.include_router(concept_router)
+
+# Include Insights Discovery API router
+from insights_discovery_api import insights_router
+app.include_router(insights_router)
+app.include_router(content_router)
+
+# Include LPE Analysis API router
+from lpe_analysis_api import lpe_analysis_router
+app.include_router(lpe_analysis_router)
+
+# Include Filesystem Ingestion API router
+from filesystem_ingestion_api import filesystem_router
+from conversation_api import add_conversation_routes
+app.include_router(filesystem_router)
+add_conversation_routes(app)
 
 # Include intelligent attributes router
 if INTELLIGENT_ATTRIBUTES_AVAILABLE:

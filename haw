@@ -125,6 +125,7 @@ get_api_script() {
         "lawyer-api") echo "$HUMANIZER_API_DIR/src/lawyer_api_main.py" ;;
         "lighthouse-api") echo "$LIGHTHOUSE_DIR/api_enhanced.py" ;;
         "pipeline-api") echo "$LIGHTHOUSE_DIR/pipeline_api.py" ;;
+        "lighthouse-ui") echo "lighthouse-ui" ;;  # Special case for frontend
         *) echo "" ;;
     esac
 }
@@ -318,6 +319,24 @@ start_api() {
         return 1
     fi
     
+    # Special handling for lighthouse-ui
+    if [[ "$api_name" == "lighthouse-ui" ]]; then
+        echo -e "${GREEN}🚀 Starting Lighthouse UI...${NC}"
+        cd "$PROJECT_ROOT/lighthouse-ui"
+        
+        # Kill any existing process on port 3100
+        lsof -ti:3100 | xargs kill -9 2>/dev/null || true
+        sleep 1
+        
+        # Start frontend with correct port
+        nohup bash -c "VITE_PORT=3100 npm run dev" > "$LIGHTHOUSE_DIR/logs/lighthouse-ui.log" 2>&1 &
+        local pid=$!
+        echo -e "${GREEN}✅ Started Lighthouse UI (PID: $pid)${NC}"
+        echo "   URL: http://127.0.0.1:3100"
+        echo "   Logs: $LIGHTHOUSE_DIR/logs/lighthouse-ui.log"
+        return 0
+    fi
+    
     if [[ ! -f "$script_path" ]]; then
         echo -e "${RED}❌ API script not found: $script_path${NC}"
         return 1
@@ -344,6 +363,21 @@ stop_api() {
     fi
     
     echo -e "${YELLOW}🛑 Stopping $api_name...${NC}"
+    
+    # Special handling for lighthouse-ui
+    if [[ "$api_name" == "lighthouse-ui" ]]; then
+        # Kill processes on port 3100
+        local pids=$(lsof -ti:3100 2>/dev/null || true)
+        if [[ -n "$pids" ]]; then
+            echo "$pids" | xargs kill -TERM 2>/dev/null || true
+            sleep 2
+            echo "$pids" | xargs kill -KILL 2>/dev/null || true
+            echo -e "${GREEN}✅ Stopped Lighthouse UI${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Lighthouse UI was not running${NC}"
+        fi
+        return 0
+    fi
     
     # Find and kill processes running this script
     local pids=$(pgrep -f "$(basename "$script_path")") || true
@@ -444,8 +478,10 @@ show_help() {
     echo "  api stop <service>   Stop API service"
     echo "  api restart <service> Restart API service"
     echo "  api list             List available API services"
+    echo "  start-lighthouse     Start both API and UI together"
+    echo "  stop-lighthouse      Stop both API and UI together"
     echo ""
-    echo "    Services: lighthouse-api, archive-api, lpe-api, lawyer-api, pipeline-api, simple-archive"
+    echo "    Services: lighthouse-api, lighthouse-ui, archive-api, lpe-api, lawyer-api, pipeline-api, simple-archive"
     echo ""
     
     echo -e "${GREEN}🔄 Pipeline Management:${NC}"
@@ -458,6 +494,7 @@ show_help() {
     
     echo -e "${YELLOW}Examples:${NC}"
     echo "  haw status                           # System health check"
+    echo "  haw start-lighthouse                 # Start both API and UI"
     echo "  haw extract-writing extract --limit 1000"
     echo "  haw embed-full --batch-size 50 --timeout 120"
     echo "  haw api start lighthouse-api"
@@ -647,6 +684,7 @@ main() {
                 "list")
                     echo -e "${CYAN}Available API Services:${NC}"
                     echo "  lighthouse-api    Enhanced Lighthouse API (port 8100)"
+                    echo "  lighthouse-ui     Lighthouse Frontend UI (port 3100)"
                     echo "  archive-api       Archive management API (port 7200)"
                     echo "  lpe-api          Lamish Projection Engine API (port 7201)"
                     echo "  lawyer-api       Content quality assessment API (port 7202)"
@@ -703,6 +741,27 @@ main() {
                     exit 1
                     ;;
             esac
+            ;;
+            
+        # Lighthouse convenience commands
+        "start-lighthouse")
+            echo -e "${CYAN}🚀 Starting Complete Lighthouse System${NC}"
+            echo "This will start both the Enhanced Lighthouse API and Frontend UI"
+            echo ""
+            start_api "lighthouse-api"
+            sleep 3
+            start_api "lighthouse-ui"
+            echo ""
+            echo -e "${GREEN}✅ Lighthouse system started!${NC}"
+            echo -e "${YELLOW}🌐 Frontend: http://127.0.0.1:3100${NC}"
+            echo -e "${YELLOW}🌐 API: http://127.0.0.1:8100${NC}"
+            ;;
+            
+        "stop-lighthouse")
+            echo -e "${YELLOW}🛑 Stopping Complete Lighthouse System${NC}"
+            stop_api "lighthouse-ui"
+            stop_api "lighthouse-api"
+            echo -e "${GREEN}✅ Lighthouse system stopped${NC}"
             ;;
             
         # Script-based commands (existing functionality)

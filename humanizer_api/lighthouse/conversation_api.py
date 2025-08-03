@@ -120,28 +120,86 @@ def add_conversation_routes(app: FastAPI):
                                       start: int = 0, 
                                       limit: int = 1000):
         """
-        Get messages from a conversation with pagination.
+        Get messages from a conversation using semantic_chunks data.
         """
         try:
-            conversation_data = conversation_browser.show_conversation(
-                conversation_id, 
-                max_content_length=10000,  # Get full content
-                show_metadata=True
+            # Use PostgreSQL to get semantic chunks for this conversation
+            import psycopg2
+            import os
+            
+            # Connect to the correct PostgreSQL database
+            conn = psycopg2.connect(
+                host=os.getenv('POSTGRES_HOST', 'localhost'),
+                port=os.getenv('POSTGRES_PORT', '5432'),
+                database='humanizer_archive',
+                user=os.getenv('POSTGRES_USER', 'humanizer_app'),
+                password=os.getenv('POSTGRES_PASSWORD', 'development_password')
             )
             
-            if not conversation_data:
+            cursor = conn.cursor()
+            
+            # Get all chunks for this conversation
+            cursor.execute("""
+                SELECT chunk_id, level, content, word_count, metadata, created_at
+                FROM semantic_chunks 
+                WHERE conversation_id = %s
+                ORDER BY created_at
+                LIMIT %s OFFSET %s
+            """, (int(conversation_id), limit if limit > 0 else 1000, start))
+            
+            rows = cursor.fetchall()
+            
+            if not rows:
                 raise HTTPException(status_code=404, detail="Conversation not found")
             
-            messages = conversation_data.get('messages', [])
-            paginated_messages = messages[start:start + limit] if limit > 0 else messages
+            # Convert chunks to message-like format
+            messages = []
+            for i, row in enumerate(rows):
+                chunk_id, level, content, word_count, metadata, created_at = row
+                
+                # Try to determine role from metadata or content
+                role = "assistant"  # Default
+                if metadata and isinstance(metadata, dict):
+                    role = metadata.get('role', metadata.get('author', 'assistant'))
+                
+                # Clean up content - handle JSON strings
+                display_content = content
+                if content.startswith('{"') and content.endswith('"}'):
+                    try:
+                        import json
+                        parsed = json.loads(content)
+                        if 'content' in parsed:
+                            display_content = parsed['content']
+                        elif 'result' in parsed:
+                            display_content = parsed['result']
+                    except:
+                        pass
+                
+                messages.append({
+                    "id": chunk_id,
+                    "role": role,
+                    "content": display_content,
+                    "timestamp": created_at.isoformat() if created_at else None,
+                    "word_count": word_count,
+                    "level": level,
+                    "metadata": metadata
+                })
+            
+            # Get conversation title from first chunk preview
+            title = f"Conversation {conversation_id}"
+            if messages and len(messages[0]['content']) > 10:
+                preview_words = messages[0]['content'][:100].split()[:8]
+                title = " ".join(preview_words) + "..."
+            
+            conn.close()
             
             return {
                 "conversation": {
                     "id": conversation_id,
-                    "title": conversation_data.get('title', ''),
-                    "source_format": conversation_data.get('source_format', 'unknown')
+                    "title": title,
+                    "source_format": "semantic_chunks"
                 },
-                "messages": paginated_messages,
+                "messages": messages,
                 "pagination": {
                     "start": start,
                     "limit": limit,
@@ -265,10 +323,69 @@ def add_conversation_routes(app: FastAPI):
         limit: int = Form(10)
     ):
         """
-        Search conversations using full-text search.
+        Search conversations using PostgreSQL full-text search in semantic_chunks.
         """
         try:
-            results = conversation_browser.search_conversations(query, limit)
+            # Use PostgreSQL search in the correct database
+            import psycopg2
+            import os
+            
+            # Connect to the correct PostgreSQL database with conversation data
+            conn = psycopg2.connect(
+                host=os.getenv('POSTGRES_HOST', 'localhost'),
+                port=os.getenv('POSTGRES_PORT', '5432'),
+                database='humanizer_archive',  # Use the correct database with populated data
+                user=os.getenv('POSTGRES_USER', 'humanizer_app'),
+                password=os.getenv('POSTGRES_PASSWORD', 'development_password')
+            )
+            
+            cursor = conn.cursor()
+            
+            # Search in semantic chunks content
+            search_query = f"%{query}%"
+            
+            # Search semantic chunks for content matching the query
+            cursor.execute("""
+                SELECT DISTINCT 
+                    conversation_id,
+                    MIN(created_at) as earliest_created,
+                    COUNT(*) as chunk_count,
+                    array_agg(DISTINCT LEFT(content, 200)) as content_previews
+                FROM semantic_chunks 
+                WHERE content ILIKE %s
+                GROUP BY conversation_id
+                ORDER BY earliest_created DESC
+                LIMIT %s
+            """, (search_query, limit))
+            
+            rows = cursor.fetchall()
+            
+            results = []
+            for row in rows:
+                conversation_id = row[0]
+                created = row[1]
+                chunk_count = row[2]
+                previews = row[3] if row[3] else []
+                
+                # Create a title from conversation_id and preview
+                title = f"Conversation {conversation_id}"
+                if previews and previews[0]:
+                    # Use first few words of first preview as title
+                    preview_words = previews[0].split()[:8]
+                    title = " ".join(preview_words) + ("..." if len(previews[0]) > 100 else "")
+                
+                results.append({
+                    "id": str(conversation_id),
+                    "title": title,
+                    "source": "semantic_chunks",
+                    "created": created.isoformat() if created else None,
+                    "imported": created.isoformat() if created else None,
+                    "messages": chunk_count,
+                    "preview": previews[0][:200] if previews and previews[0] else ""
+                })
+            
+            conn.close()
+            
             return {
                 "query": query,
                 "total_results": len(results),

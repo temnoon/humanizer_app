@@ -90,9 +90,9 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
   const [showFullMessage, setShowFullMessage] = useState(null);
   const [showSaveSearchDialog, setShowSaveSearchDialog] = useState(false);
 
-  // Archive API base URL (Enhanced Archive API)
-  const ARCHIVE_API_BASE = "http://localhost:7200";
-  const RAILS_API_BASE = "http://localhost:3000/api/v1/unified_archive";
+  // Archive API base URL (Enhanced Lighthouse API)  
+  const ARCHIVE_API_BASE = "http://localhost:8100/api";
+  const API_BASE = "http://localhost:8100/api/archive";
 
   // Load archive statistics on mount
   useEffect(() => {
@@ -122,7 +122,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
   // Setup WebSocket for progress updates
   useEffect(() => {
     if (currentSessionId && !websocket) {
-      const ws = new WebSocket(`ws://localhost:7200/ws/progress/${currentSessionId}`);
+      const ws = new WebSocket(`ws://localhost:8100/ws/progress/${currentSessionId}`);
       
       ws.onopen = () => {
         console.log('WebSocket connected for session:', currentSessionId);
@@ -154,7 +154,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
 
   const loadArchiveStats = async () => {
     try {
-      const response = await fetch(`${RAILS_API_BASE}/statistics`);
+      const response = await fetch(`${API_BASE}/statistics`);
       if (response.ok) {
         const stats = await response.json();
         setArchiveStats(stats);
@@ -648,7 +648,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
 
   const loadConversationThread = async (contentId) => {
     try {
-      const response = await fetch(`${RAILS_API_BASE}/${contentId}/thread`);
+      const response = await fetch(`${API_BASE}/${contentId}/thread`);
       if (response.ok) {
         const thread = await response.json();
         setConversationThread(thread);
@@ -661,7 +661,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
   const renderProgressDisplay = () => {
     if (!isProcessing && !processingProgress) {
       return (
-        <div className="text-center py-4 text-muted-foreground">
+        <div className="text-center py-4 text-card-secondary">
           No active processing
         </div>
       );
@@ -676,7 +676,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
         </div>
         
         {processingProgress && (
-          <div className="text-sm text-center text-muted-foreground">
+          <div className="text-sm text-center text-card-secondary">
             {processingProgress.stats.conversations_processed || 0} conversations processed
           </div>
         )}
@@ -693,7 +693,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
         <div className="glass rounded-lg p-4">
           <div className="flex items-center space-x-2 mb-2">
             <Database className="w-4 h-4 text-blue-400" />
-            <span className="text-sm text-muted-foreground">Total Content</span>
+            <span className="text-sm text-card-secondary">Total Content</span>
           </div>
           <div className="text-2xl font-bold">{archiveStats.total_content?.toLocaleString() || 0}</div>
         </div>
@@ -701,7 +701,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
         <div className="glass rounded-lg p-4">
           <div className="flex items-center space-x-2 mb-2">
             <MessageSquare className="w-4 h-4 text-green-400" />
-            <span className="text-sm text-muted-foreground">Conversations</span>
+            <span className="text-sm text-card-secondary">Conversations</span>
           </div>
           <div className="text-2xl font-bold">{archiveStats.conversations_count?.toLocaleString() || 0}</div>
         </div>
@@ -709,7 +709,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
         <div className="glass rounded-lg p-4">
           <div className="flex items-center space-x-2 mb-2">
             <BarChart3 className="w-4 h-4 text-purple-400" />
-            <span className="text-sm text-muted-foreground">Avg Quality</span>
+            <span className="text-sm text-card-secondary">Avg Quality</span>
           </div>
           <div className="text-2xl font-bold">{(archiveStats.average_quality_score || 0).toFixed(2)}</div>
         </div>
@@ -717,7 +717,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
         <div className="glass rounded-lg p-4">
           <div className="flex items-center space-x-2 mb-2">
             <Archive className="w-4 h-4 text-yellow-400" />
-            <span className="text-sm text-muted-foreground">Sources</span>
+            <span className="text-sm text-card-secondary">Sources</span>
           </div>
           <div className="text-2xl font-bold">{Object.keys(archiveStats.by_source_type || {}).length}</div>
         </div>
@@ -746,7 +746,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
             <Archive className="w-6 h-6 text-purple-400" />
             <div>
               <h2 className="text-2xl font-bold">Archive Explorer</h2>
-              <p className="text-muted-foreground">Search and explore your unified PostgreSQL archive</p>
+              <p className="text-card-secondary">Search and explore your unified PostgreSQL archive</p>
             </div>
           </div>
           <div className="flex items-center space-x-2">
@@ -930,7 +930,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-muted-foreground text-sm">Loading embedding statistics...</div>
+                  <div className="text-card-secondary text-sm">Loading embedding statistics...</div>
                 )}
               </div>
 
@@ -956,7 +956,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                       <TreePine className="w-4 h-4 text-green-400" />
                       <span className="font-medium">Multi-Level Matching</span>
                     </div>
-                    <div className="text-muted-foreground">
+                    <div className="text-card-secondary">
                       • Chunk-level: Direct content similarity<br/>
                       • Section-level: Paragraph context<br/>
                       • Document-level: Big picture themes
@@ -1061,25 +1061,25 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                     <div className="text-2xl font-bold text-blue-400">
                       {processingProgress.statistics.processed_conversations}
                     </div>
-                    <div className="text-sm text-muted-foreground">Processed</div>
+                    <div className="text-sm text-card-secondary">Processed</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-400">
                       {processingProgress.statistics.total_chunks}
                     </div>
-                    <div className="text-sm text-muted-foreground">Chunks</div>
+                    <div className="text-sm text-card-secondary">Chunks</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-400">
                       {processingProgress.statistics.total_embeddings}
                     </div>
-                    <div className="text-sm text-muted-foreground">Embeddings</div>
+                    <div className="text-sm text-card-secondary">Embeddings</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-red-400">
                       {processingProgress.statistics.failed_conversations}
                     </div>
-                    <div className="text-sm text-muted-foreground">Failed</div>
+                    <div className="text-sm text-card-secondary">Failed</div>
                   </div>
                 </div>
 
@@ -1090,7 +1090,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                       <Clock className="w-4 h-4 text-purple-400" />
                       <span>Estimated completion: {new Date(processingProgress.timing.estimated_completion).toLocaleTimeString()}</span>
                       {processingProgress.timing.elapsed_seconds && (
-                        <span className="text-muted-foreground">
+                        <span className="text-card-secondary">
                           • Elapsed: {Math.round(processingProgress.timing.elapsed_seconds / 60)}m
                         </span>
                       )}
@@ -1200,7 +1200,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                     setSelectedFiles([]);
                     setArchiveAnalysis(null);
                   }}
-                  className="text-muted-foreground hover:text-white transition-colors"
+                  className="text-card-secondary hover:text-white transition-colors"
                 >
                   ✕
                 </button>
@@ -1215,7 +1215,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                       <Folder className="w-5 h-5 text-blue-400" />
                       <h4 className="font-medium">Archive Folder</h4>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-3">
+                    <p className="text-sm text-card-secondary mb-3">
                       Select a folder containing conversation.json files and media
                     </p>
                     <label className="block">
@@ -1239,7 +1239,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                       <FileArchive className="w-5 h-5 text-green-400" />
                       <h4 className="font-medium">ZIP Archive</h4>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-3">
+                    <p className="text-sm text-card-secondary mb-3">
                       Upload a ZIP file containing your archive
                     </p>
                     <label className="block">
@@ -1274,25 +1274,25 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                         <div className="text-2xl font-bold text-blue-400">
                           {archiveAnalysis.estimated_conversations}
                         </div>
-                        <div className="text-sm text-muted-foreground">Conversations</div>
+                        <div className="text-sm text-card-secondary">Conversations</div>
                       </div>
                       <div className="text-center">
                         <div className="text-2xl font-bold text-green-400">
                           {archiveAnalysis.media_files}
                         </div>
-                        <div className="text-sm text-muted-foreground">Media Files</div>
+                        <div className="text-sm text-card-secondary">Media Files</div>
                       </div>
                       <div className="text-center">
                         <div className="text-2xl font-bold text-purple-400">
                           {archiveAnalysis.total_files}
                         </div>
-                        <div className="text-sm text-muted-foreground">Total Files</div>
+                        <div className="text-sm text-card-secondary">Total Files</div>
                       </div>
                       <div className="text-center">
                         <div className="text-2xl font-bold text-yellow-400">
                           {archiveAnalysis.size_mb.toFixed(1)}MB
                         </div>
-                        <div className="text-sm text-muted-foreground">Total Size</div>
+                        <div className="text-sm text-card-secondary">Total Size</div>
                       </div>
                     </div>
 
@@ -1387,7 +1387,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                   <FileText className="w-5 h-5 text-blue-400" />
                   <h4 className="font-medium">Single Conversation</h4>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">
+                <p className="text-sm text-card-secondary mb-3">
                   Upload individual conversation.json files from ChatGPT downloads
                 </p>
                 <label className="block">
@@ -1410,7 +1410,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                   <Folder className="w-5 h-5 text-green-400" />
                   <h4 className="font-medium">Bulk Import</h4>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">
+                <p className="text-sm text-card-secondary mb-3">
                   Upload folder containing multiple conversation directories
                 </p>
                 <label className="block">
@@ -1848,14 +1848,14 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                     </div>
                   </div>
                   
-                  <p className="text-sm text-muted-foreground line-clamp-2">
+                  <p className="text-sm text-card-secondary line-clamp-2">
                     {result.body_text || result.content_preview}
                   </p>
                   
                   {result.content_quality_score && (
                     <div className="mt-2 flex items-center space-x-2">
                       <BarChart3 className="w-3 h-3 text-purple-400" />
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-card-secondary">
                         Quality: {(result.content_quality_score * 100).toFixed(0)}%
                       </span>
                     </div>
@@ -2084,7 +2084,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                   setSelectedConversation(null);
                   setConversationThread([]);
                 }}
-                className="text-muted-foreground hover:text-white transition-colors"
+                className="text-card-secondary hover:text-white transition-colors"
               >
                 ✕
               </button>
@@ -2107,7 +2107,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                       message.author === "user" ? "bg-purple-400" : "bg-blue-400"
                     )} />
                     <span className="font-medium capitalize">{message.author}</span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-card-secondary">
                       {new Date(message.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
@@ -2153,7 +2153,7 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                     setSelectedConversationMessages([]);
                     setCurrentConversationId(null);
                   }}
-                  className="text-muted-foreground hover:text-white transition-colors"
+                  className="text-card-secondary hover:text-white transition-colors"
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -2177,10 +2177,10 @@ const ArchiveExplorer = ({ onNavigateToConversation }) => {
                           message.author === "user" ? "bg-purple-400" : "bg-blue-400"
                         )} />
                         <span className="font-medium capitalize">{message.role || message.author}</span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-card-secondary">
                           {message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : ""}
                         </span>
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-card-secondary">
                           {message.word_count} words
                         </span>
                       </div>
