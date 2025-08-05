@@ -30,7 +30,7 @@ import { cn } from "./utils";
 // Components - Subjective Narrative Humanizer
 import DiscoveryDashboard from "./components/DiscoveryDashboard";
 import ContentIngestion from "./components/ContentIngestion";
-import FilesystemIngestion from "./components/FilesystemIngestion";
+// Removed FilesystemIngestion - replaced by IntelligentFilesystemAgent
 import BookGenerator from "./components/BookGenerator";
 import NarrativeStudio from "./components/NarrativeStudio";
 import SimpleArchiveExplorer from "./components/SimpleArchiveExplorer";
@@ -47,6 +47,7 @@ import ThematicMaps from "./components/ThematicMaps";
 import EssenceDistillery from "./components/EssenceDistillery";
 import PersonalAnalytics from "./components/PersonalAnalytics";
 import TransformationLab from "./components/TransformationLab";
+import ProjectionTransformationInterface from "./components/ProjectionTransformationInterface";
 
 // Placeholder components for tabs not yet implemented
 const PlaceholderTab = ({ tabName }) => (
@@ -79,7 +80,7 @@ function App() {
   const coreDiscoveryTabs = [
     { id: "discovery-dashboard", label: "Discovery", icon: Sparkles, description: "AI-curated insights from your content" },
     { id: "content-ingestion", label: "Ingest", icon: Plus, description: "Upload and process new content" },
-    { id: "filesystem-ingestion", label: "Filesystem", icon: HardDrive, description: "Import documents from filesystem with embeddings" },
+    // Removed filesystem-ingestion tab - functionality moved to IntelligentFilesystemAgent
     { id: "archive-explorer", label: "Archive", icon: Archive, description: "Search and browse your content" },
     { id: "narrative-studio", label: "Studio", icon: Zap, description: "Transform and refine narratives" },
     { id: "book-generator", label: "Books", icon: BookOpen, description: "Generate books from insights" },
@@ -87,11 +88,12 @@ function App() {
 
   // Analysis Tabs (Secondary) - Advanced Tools
   const analysisTools = [
+    { id: "projection-transform", label: "Projection", icon: Target, description: "Mathematical lexical space projections" },
     { id: "translation-studio", label: "Translation", icon: Languages, description: "Translation chains and semantic analysis" },
     { id: "thematic-maps", label: "Themes", icon: Map, description: "Visualize concept connections" },
     { id: "essence-distillery", label: "Essence", icon: Beaker, description: "Extract core insights" },
     { id: "personal-analytics", label: "Analytics", icon: BarChart3, description: "Writing patterns and trends" },
-    { id: "transformation-lab", label: "Transform", icon: Layers, description: "Advanced perspective tools" },
+    { id: "transformation-lab", label: "Transform", icon: Layers, description: "Legacy transformation tools" },
   ];
 
   // System Tabs (Utility) - Configuration & Technical
@@ -109,8 +111,7 @@ function App() {
         return <DiscoveryDashboard onNavigate={navigateToTab} />;
       case "content-ingestion":
         return <ContentIngestion onNavigate={navigateToTab} />;
-      case "filesystem-ingestion":
-        return <FilesystemIngestion onNavigate={navigateToTab} />;
+      // Removed filesystem-ingestion case - functionality moved to IntelligentFilesystemAgent
       case "archive-explorer":
         try {
           console.log("Rendering SimpleArchiveExplorer...");
@@ -141,6 +142,8 @@ function App() {
         return <EssenceDistillery onNavigate={navigateToTab} />;
       case "personal-analytics":
         return <PersonalAnalytics onNavigate={navigateToTab} />;
+      case "projection-transform":
+        return <ProjectionTransformationInterface onNavigate={navigateToTab} />;
       case "transformation-lab":
         return <TransformationLab onNavigate={navigateToTab} />;
       default:

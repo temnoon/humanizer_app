@@ -153,6 +153,14 @@ app.include_router(linguistic_router)
 app.include_router(balanced_router)
 app.include_router(writebook_router)
 
+# Include core density matrix transformation API - NO MOCK DATA
+from density_matrix_api import router as density_matrix_router
+app.include_router(density_matrix_router)
+
+# Include expandable vocabulary system API
+from vocabulary_api import router as vocabulary_router
+app.include_router(vocabulary_router)
+
 # Include new API routers for Subjective Narrative Humanizer
 app.include_router(book_router)
 app.include_router(archive_router)
@@ -170,6 +178,10 @@ app.include_router(pipeline_router)
 from export_router import export_router
 app.include_router(export_router)
 
+# Include Analytics API router
+from analytics_router import analytics_router
+app.include_router(analytics_router)
+
 # Include Concept Mapping API router
 from concept_mapping_api import concept_router
 app.include_router(concept_router)
@@ -183,9 +195,19 @@ app.include_router(content_router)
 from lpe_analysis_api import lpe_analysis_router
 app.include_router(lpe_analysis_router)
 
+# Include Transform API router for TransformationLab
+from transform_router import transform_router
+app.include_router(transform_router)
+
+# Include Distillery API router for Essence Distillery
+from distillery_router import distillery_router
+app.include_router(distillery_router)
+
 # Include Filesystem Ingestion API router
+from intelligent_filesystem_agent import filesystem_agent_router
 from filesystem_ingestion_api import filesystem_router
 from conversation_api import add_conversation_routes
+app.include_router(filesystem_agent_router)
 app.include_router(filesystem_router)
 add_conversation_routes(app)
 
